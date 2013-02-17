@@ -1,14 +1,16 @@
 lyra
 ====
 
-ruby lightning-fast file navigator
+lightning-fast file navigator
 
 ##INSTALL##
 
 *  Copy lyra.rb into PATH, e.g. $HOME/bin
-*  alias as:
+*  alias as: 
+
     alias y=~/bin/lyra.rb
-*  run as:
+*  run as:  
+
     y
 
 *  profit!
@@ -20,7 +22,7 @@ This relies only on **ruby 1.9.3** (io/wait) so as to get a single key with time
   of a single char, but not sure if it allows a timeout. Actually for this softwares minimal needs
   we can avoid those keys and focus only on control-keys, however, accidental pressing of arrow keys does result in various character keys getting read, so it can have undesirable effects since we execute commands mostly without ENTER being pressed.
 
-Oh wait, I also use "**zsh**" for getting the files. Actually, i guess i could just use ruby for that, but we'll see -- zfm used zsh's capabilities a lot, if I don't then I'll skip zsh. For the moment, if you don't have zsh, bust do "brew install zsh" or maybe replace the zsh call with "sh -c echo *".
+Oh wait, I also use **zsh** for getting the files. Actually, i guess i could just use ruby for that, but we'll see -- zfm used zsh's capabilities a lot, if I don't then I'll skip zsh. For the moment, if you don't have zsh, just do `brew install zsh` or maybe replace the zsh call with `sh -c echo *`.
 
 ## Keys ##
 
@@ -32,7 +34,7 @@ Oh wait, I also use "**zsh**" for getting the files. Actually, i guess i could j
 *  "," go to parent dir (mnemonic is "&lt;")
 
 
-Other navigation keys are being added. 
+Other navigation keys are being added for popping, changing dir etc. 
 
 ## Motivation ##
 
@@ -44,3 +46,5 @@ set of zfm's functionality. I aim to keep this in one file so it can just be put
 I don't see myself implementing the whole vim bindings here, since HINT mode is really faster for getting to a file in one stroke. Also, the whole arrow key movement thing in zfm is nice to look at but is a slow way of navigation. I might boldface selected files currently there's just an "x" mark on it.
 
 Please try out zfm, it rocks (IMO).
+
+lyra is named after a constellation, not Lyra Belacqua !
