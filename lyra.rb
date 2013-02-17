@@ -1,4 +1,13 @@
 #!/usr/bin/env ruby
+# ----------------------------------------------------------------------------- #
+#         File: lyra.rb
+#  Description: Fast file navigation, a tiny version of zfm
+#       Author: rkumar http://github.com/rkumar/lyra/
+#         Date: 2013-02-17 - 17:48
+#      License: GPL
+#  Last update: 2013-02-17 17:53
+# ----------------------------------------------------------------------------- #
+#  lyra.rb  Copyright (C) 2012-2013 rahul kumar
 require 'readline'
 require 'io/wait'
 # -- requires 1.9.3 for io/wait
@@ -7,6 +16,11 @@ require 'io/wait'
 #http://stackoverflow.com/questions/174933/how-to-get-a-single-character-without-pressing-enter/8274275#8274275
 # Need to take complex keys and matc against a hash.
 
+## INSTALLATION
+# copy into PATH
+# alias y=~/bin/lyra.rb
+# y
+VERSION="0.0.0"
 $kh=Hash.new
 $kh["OP"]="F1"
 $kh["[A"]="UP"
@@ -50,7 +64,7 @@ $kh[KEY_F9]="F9"
 $kh[KEY_F10]="F10"
 
 
-def char_if_pressed
+def get_char
   begin
     system("stty raw -echo 2>/dev/null") # turn raw input on
     c = nil
@@ -93,27 +107,7 @@ def char_if_pressed
   end
 end
 
-# if i put this inside the function, then I keep getting that 
-# error message by zsh : unable to perform all requested operations
-# However putting this globally means that newlines are not printed !
-#system("stty raw -echo") # turn raw input on
-#while true
-  ##system("stty raw -echo 2>/dev/null") # turn raw input on
-  #c = char_if_pressed
-  ##system("stty -raw echo 2>/dev/null") # turn raw input on
-  #puts "[#{c}]" if c
-  #exit if c == 'q'
-  ##sleep 1
-  ##puts "tick"
-#end
-require 'highline/import'
-#require 'highline/system_extensions' 
-#def getch()
-  #HighLine::SystemExtensions.raw_no_echo_mode; 
-  #c = HighLine::SystemExtensions.get_character; 
-  #HighLine::SystemExtensions.restore_mode;
-  #c
-#end
+#require 'highline/import'
 
 $IDX="123456789abcdefghijklmnoprstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 $selected_files = Array.new
@@ -155,11 +149,9 @@ def run()
       #break if ctr >= fl
     #end
     print "#{$files.size}, #{view.size} sta=#{sta} (#{patt}): "
-    ch = char_if_pressed
+    ch = get_char
     puts
     break if ch == 'q' 
-    # next line was catching M-p space etc 
-    #if ( (ch >= 'a' && ch <= 'z') || ( ch >= "A" && ch <= "Z" ))
     if  ch =~ /^[1-9a-zA-Z]$/
       # this is insert mode, not hint mode
       #patt += ch
