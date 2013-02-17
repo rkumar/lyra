@@ -5,7 +5,7 @@
 #       Author: rkumar http://github.com/rkumar/lyra/
 #         Date: 2013-02-17 - 17:48
 #      License: GPL
-#  Last update: 2013-02-17 17:53
+#  Last update: 2013-02-18 01:13
 # ----------------------------------------------------------------------------- #
 #  lyra.rb  Copyright (C) 2012-2013 rahul kumar
 require 'readline'
@@ -20,7 +20,7 @@ require 'io/wait'
 # copy into PATH
 # alias y=~/bin/lyra.rb
 # y
-VERSION="0.0.0"
+VERSION="0.0.1"
 $kh=Hash.new
 $kh["OP"]="F1"
 $kh["[A"]="UP"
@@ -113,6 +113,18 @@ $IDX="123456789abcdefghijklmnoprstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 $selected_files = Array.new
 $selection_mode = false
 $command_mode = false
+LINES=%x(tput lines).to_i
+ROWS = LINES - 4
+CLEAR      = "\e[0m"
+BOLD       = "\e[1m"
+BOLD_OFF       = "\e[22m"
+RED        = "\e[31m"
+GREEN      = "\e[32m"
+YELLOW     = "\e[33m"
+BLUE       = "\e[34m"
+$patt=nil
+$help = "#{BOLD}1-9a-zA-Z#{BOLD_OFF} Select #{BOLD}/#{BOLD_OFF} Grep #{BOLD}'#{BOLD_OFF} First char  #{BOLD}M-n/p#{BOLD_OFF} Paging  #{BOLD}!#{BOLD_OFF} Command Mode  #{BOLD}@#{BOLD_OFF} Selection Mode  #{BOLD}q#{BOLD_OFF} Quit"
+
 
 def run()
   ctr=0
@@ -123,20 +135,24 @@ def run()
   fl=$files.size
 
   selectedix = nil
-  patt=""
+  $patt=""
   sta=0
   while true
     i = 0
-    if patt
-      view = $files.grep(/#{patt}/)
+    if $patt
+      view = $files.grep(/#{$patt}/)
     else 
       view = $files
     end
     fl=view.size
     sta = 0 if sta > fl || sta < 0
     vp = view[sta, 60]
+    fin = sta + vp.size
     system("clear")
-    buff = columnate vp, 25
+    # title
+    print "#{GREEN}#{$help}#{CLEAR}\n"
+    print "#{BOLD}#{Dir.pwd}  #{sta + 1} to #{fin} of #{fl}#{CLEAR}\n"
+    buff = columnate vp, ROWS
     buff.each {|line| print line, "\n" }
     print
     #while i < 25 
@@ -148,9 +164,11 @@ def run()
       #ctr += 1
       #break if ctr >= fl
     #end
-    print "#{$files.size}, #{view.size} sta=#{sta} (#{patt}): "
+    # prompt
+    #print "#{$files.size}, #{view.size} sta=#{sta} (#{patt}): "
+    print "\r#{$patt} >"
     ch = get_char
-    puts
+    #puts
     break if ch == 'q' 
     if  ch =~ /^[1-9a-zA-Z]$/
       # this is insert mode, not hint mode
@@ -159,12 +177,12 @@ def run()
       select_hint vp, ch
       ctr = 0
     elsif ch == "BACKSPACE"
-      patt = patt[0..-2]
+      $patt = $patt[0..-2]
       ctr = 0
     elsif ch == "/"
       print "Enter pattern: "
-      patt = gets
-      patt.chomp!
+      $patt = gets
+      $patt.chomp!
       ctr = 0
     elsif ch == "SPACE"
       sta += 60
@@ -177,7 +195,13 @@ def run()
     elsif ch == "!"
       $command_mode = !$command_mode
     elsif ch == ","
+      $patt=nil
       change_dir ".."
+    elsif ch == "'"
+      print "Entries starting with: "
+      fc = get_char
+      $patt = "^#{fc}"
+      ctr = 0
     else
       p ch
     end
@@ -185,6 +209,8 @@ def run()
 end
 def columnate ary, sz
   buff=Array.new
+  return buff if ary.nil? || ary.size == 0
+  
   # ix refers to the index in the complete file list, wherease we only show 60 at a time
   ix=0
   wid=30
@@ -251,5 +277,6 @@ end
 def change_dir f
     Dir.chdir f
     $files = `zsh -c 'print -rl -- *(M)'`.split("\n")
+    $patt=nil
 end
 run if __FILE__ == $PROGRAM_NAME
