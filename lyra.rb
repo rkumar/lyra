@@ -5,11 +5,12 @@
 #       Author: rkumar http://github.com/rkumar/lyra/
 #         Date: 2013-02-17 - 17:48
 #      License: GPL
-#  Last update: 2013-02-18 01:13
+#  Last update: 2013-02-18 16:05
 # ----------------------------------------------------------------------------- #
 #  lyra.rb  Copyright (C) 2012-2013 rahul kumar
-require 'readline'
+#require 'readline'
 require 'io/wait'
+require 'shellwords'
 # -- requires 1.9.3 for io/wait
 # -- cannot do with Highline since we need a timeout on wait, not sure if HL can do that
 ## Adapted from:
@@ -20,7 +21,7 @@ require 'io/wait'
 # copy into PATH
 # alias y=~/bin/lyra.rb
 # y
-VERSION="0.0.1"
+VERSION="0.0.2"
 $kh=Hash.new
 $kh["OP"]="F1"
 $kh["[A"]="UP"
@@ -63,7 +64,12 @@ $kh[KEY_F8]="F8"
 $kh[KEY_F9]="F9"
 $kh[KEY_F10]="F10"
 
-
+$bindings = {}
+$bindings = {
+  "M-a" => "select_all",
+  "M-A" => "unselect_all",
+  "+"   => "goto_dir"
+}
 def get_char
   begin
     system("stty raw -echo 2>/dev/null") # turn raw input on
@@ -111,8 +117,9 @@ end
 
 $IDX="123456789abcdefghijklmnoprstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 $selected_files = Array.new
-$selection_mode = false
-$command_mode = false
+#$selection_mode = false
+#$command_mode = false
+$mode = nil
 LINES=%x(tput lines).to_i
 ROWS = LINES - 4
 CLEAR      = "\e[0m"
@@ -140,13 +147,13 @@ def run()
   while true
     i = 0
     if $patt
-      view = $files.grep(/#{$patt}/)
+      $view = $files.grep(/#{$patt}/)
     else 
-      view = $files
+      $view = $files
     end
-    fl=view.size
+    fl=$view.size
     sta = 0 if sta > fl || sta < 0
-    vp = view[sta, 60]
+    vp = $view[sta, 60]
     fin = sta + vp.size
     system("clear")
     # title
@@ -166,7 +173,9 @@ def run()
     #end
     # prompt
     #print "#{$files.size}, #{view.size} sta=#{sta} (#{patt}): "
-    print "\r#{$patt} >"
+    _mm = ""
+    _mm = "[#{$mode}] " if $mode
+    print "\r#{_mm}#{$patt} >"
     ch = get_char
     #puts
     break if ch == 'q' 
@@ -191,9 +200,21 @@ def run()
     elsif ch == "M-p"
       sta -= 60
     elsif ch == "@"
-      $selection_mode = !$selection_mode
+      if $mode == 'SEL'
+        # we seem to be coming out of select mode with some files
+        if $selected_files.size > 0
+          run_command $selected_files
+        end
+        $mode = nil
+      else
+        #$selection_mode = !$selection_mode
+        $mode = 'SEL'
+      end
     elsif ch == "!"
-      $command_mode = !$command_mode
+      $mode = 'COM'
+      #$command_mode = !$command_mode
+    elsif ch == "ESCAPE"
+      $mode = nil
     elsif ch == ","
       $patt=nil
       change_dir ".."
@@ -203,7 +224,9 @@ def run()
       $patt = "^#{fc}"
       ctr = 0
     else
-      p ch
+      binding = $bindings[ch]
+      send(binding) if binding
+      #p ch
     end
   end
 end
@@ -222,7 +245,16 @@ def columnate ary, sz
       mark="   "
       mark=" x " if $selected_files.index(ary[ix])
 
-      s = "#{ind}#{mark}#{ary[ix].ljust(wid)}"
+      f = ary[ix]
+      if f.size > wid
+        f = f[0, wid-2]+"$ "
+      else
+        f = f.ljust(wid)
+      end
+
+      #s = "#{ind}#{mark}#{ary[ix].ljust(wid)}"
+      s = "#{ind}#{mark}#{f}"
+  
       if buff[ctr]
         buff[ctr] += s
       else
@@ -241,9 +273,9 @@ def select_hint view, ch
   ix = $IDX.index(ch)
   if ix
     f = view[ix]
-    if $selection_mode
+    if $mode == 'SEL'
       toggle_select f
-    elsif $command_mode
+    elsif $mode == 'COM'
       run_command f
     else
       open_file f
@@ -262,16 +294,26 @@ def open_file f
   if File.directory? f
     change_dir f
   else
-    system("$EDITOR #{f}")
+    system("$EDITOR #{Shellwords.escape(f)}")
   end
 end
 def run_command f
-  print "Run a command on #{f}: "
+  files=nil
+  case f
+  when Array
+    # escape the contents and create a string
+    files = Shellwords.join(f)
+  when String
+    files = f
+  end
+  print "Run a command on #{files}: "
   command = gets().chomp
   print "Second part of command: "
   command2 = gets().chomp
-  puts "#{command} #{f} #{command2}"
-  system "#{command} #{f} #{command2}"
+  puts "#{command} #{files} #{command2}"
+  system "#{command} #{files} #{command2}"
+  puts "Press a key ..."
+  get_char
 end
 
 def change_dir f
@@ -279,4 +321,16 @@ def change_dir f
     $files = `zsh -c 'print -rl -- *(M)'`.split("\n")
     $patt=nil
 end
+def unselect_all
+  $selected_files = []
+end
+def select_all
+  $selected_files = $view.dup
+end
+def goto_dir
+  print "Enter path: "
+  path = gets.chomp
+  open_file File.expand_path(path)
+end
+
 run if __FILE__ == $PROGRAM_NAME
