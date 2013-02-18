@@ -5,38 +5,40 @@
 #       Author: rkumar http://github.com/rkumar/lyra/
 #         Date: 2013-02-17 - 17:48
 #      License: GPL
-#  Last update: 2013-02-18 17:42
+#  Last update: 2013-02-19 00:46
 # ----------------------------------------------------------------------------- #
 #  lyra.rb  Copyright (C) 2012-2013 rahul kumar
 #require 'readline'
 require 'io/wait'
+# http://www.ruby-doc.org/stdlib-1.9.3/libdoc/shellwords/rdoc/Shellwords.html
 require 'shellwords'
 # -- requires 1.9.3 for io/wait
 # -- cannot do with Highline since we need a timeout on wait, not sure if HL can do that
-## Adapted from:
-#http://stackoverflow.com/questions/174933/how-to-get-a-single-character-without-pressing-enter/8274275#8274275
-# Need to take complex keys and matc against a hash.
 
 ## INSTALLATION
 # copy into PATH
 # alias y=~/bin/lyra.rb
 # y
-VERSION="0.0.3"
+VERSION="0.0.4-alpha"
 
 $bindings = {}
 $bindings = {
-  "M-a" => "select_all",
-  "M-A" => "unselect_all",
+  "`"   => "main_menu",
   "@"   => "selection_toggle",
   "!"   => "command_mode",
+  "M-a" => "select_all",
+  "M-A" => "unselect_all",
   ","   => "goto_parent_dir",
+  "+"   => "goto_dir",
   "'"   => "goto_entry_starting_with",
   "/"   => "enter_regex",
   "M-p"   => "prev_page",
   "M-n"   => "next_page",
   "SPACE"   => "next_page",
 
-  "+"   => "goto_dir"
+  "?"   => "print_help",
+  "F1"   => "print_help"
+
 }
 
 ## clean this up a bit, copied from shell program and macro'd 
@@ -82,6 +84,10 @@ $kh[KEY_F8]="F8"
 $kh[KEY_F9]="F9"
 $kh[KEY_F10]="F10"
 
+## get a character from user and return as a string
+# Adapted from:
+#http://stackoverflow.com/questions/174933/how-to-get-a-single-character-without-pressing-enter/8274275#8274275
+# Need to take complex keys and matc against a hash.
 def get_char
   begin
     system("stty raw -echo 2>/dev/null") # turn raw input on
@@ -128,12 +134,13 @@ end
 #require 'highline/import'
 
 $IDX="123456789abcdefghijklmnoprstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-PAGESIZE = 60
+$pagesize = 60
 $selected_files = Array.new
 #$selection_mode = false
 #$command_mode = false
 $mode = nil
 LINES=%x(tput lines).to_i
+COLS=%x(tput cols).to_i
 ROWS = LINES - 4
 CLEAR      = "\e[0m"
 BOLD       = "\e[1m"
@@ -142,9 +149,11 @@ RED        = "\e[31m"
 GREEN      = "\e[32m"
 YELLOW     = "\e[33m"
 BLUE       = "\e[34m"
+REVERSE    = "\e[7m"
 $patt=nil
-$help = "#{BOLD}1-9a-zA-Z#{BOLD_OFF} Select #{BOLD}/#{BOLD_OFF} Grep #{BOLD}'#{BOLD_OFF} First char  #{BOLD}M-n/p#{BOLD_OFF} Paging  #{BOLD}!#{BOLD_OFF} Command Mode  #{BOLD}@#{BOLD_OFF} Selection Mode  #{BOLD}q#{BOLD_OFF} Quit"
+#$help = "#{BOLD}1-9a-zA-Z#{BOLD_OFF} Select #{BOLD}/#{BOLD_OFF} Grep #{BOLD}'#{BOLD_OFF} First char  #{BOLD}M-n/p#{BOLD_OFF} Paging  #{BOLD}!#{BOLD_OFF} Command Mode  #{BOLD}@#{BOLD_OFF} Selection Mode  #{BOLD}q#{BOLD_OFF} Quit"
 
+$help = "#{BOLD}?#{BOLD_OFF} Help  #{BOLD}!#{BOLD_OFF} Command Mode  #{BOLD}@#{BOLD_OFF} Selection Mode  #{BOLD}q#{BOLD_OFF} Quit "
 
 def run()
   ctr=0
@@ -165,15 +174,17 @@ def run()
       $view = $files
     end
     fl=$view.size
-    $sta = 0 if $sta > fl || $sta < 0
-    vp = $view[$sta, PAGESIZE]
+    $sta = 0 if $sta >= fl || $sta < 0
+    vp = $view[$sta, $pagesize]
     fin = $sta + vp.size
     system("clear")
     # title
-    print "#{GREEN}#{$help}#{CLEAR}\n"
+    print "#{GREEN}#{$help}#{CLEAR}  lyra #{VERSION}\n"
     print "#{BOLD}#{Dir.pwd}  #{$sta + 1} to #{fin} of #{fl}#{CLEAR}\n"
     buff = columnate vp, ROWS
-    buff.each {|line| print line, "\n" }
+    # needed the next line to see how much extra we were going in padding
+    #buff.each {|line| print "#{REVERSE}#{line}#{CLEAR}\n" }
+    buff.each {|line| print line, "\n"  }
     print
     # prompt
     #print "#{$files.size}, #{view.size} sta=#{sta} (#{patt}): "
@@ -199,13 +210,33 @@ def run()
     end
   end
 end
+## 
+#
+# print in columns
+# ary - array of data
+# sz  - lines in one column
+#
 def columnate ary, sz
   buff=Array.new
   return buff if ary.nil? || ary.size == 0
   
+  # determine width based on number of files to show
+  # if less than sz then 1 col and full width
+  #
+  wid = 30
+  ars = ary.size
+  ars = $pagesize
+  d = 4
+  if ars <= sz
+    wid = COLS - d
+  elsif ars < sz * 2
+    wid = COLS/2 - d
+  elsif ars < sz * 3
+    wid = COLS/3 - d
+  end
+
   # ix refers to the index in the complete file list, wherease we only show 60 at a time
   ix=0
-  wid=30
   while true
     ## ctr refers to the index in the column
     ctr=0
@@ -273,7 +304,7 @@ def run_command f
     # escape the contents and create a string
     files = Shellwords.join(f)
   when String
-    files = f
+    files = Shellwords.escape(f)
   end
   print "Run a command on #{files}: "
   command = gets().chomp
@@ -313,7 +344,12 @@ def selection_toggle
         $mode = 'SEL'
       end
 end
+## toggle command mode
 def command_mode
+  if $mode == 'COM'
+    $mode = nil
+    return
+  end
   $mode = 'COM'
 end
 def goto_parent_dir
@@ -332,10 +368,112 @@ def enter_regex
   ctr = 0
 end
 def next_page
-  $sta += PAGESIZE
+  $sta += $pagesize
 end
 def prev_page
-  $sta -= PAGESIZE
+  $sta -= $pagesize
+end
+def print_help
+  system("clear")
+  puts "HELP"
+  puts
+  puts "To open a file or dir press 1-9 a-z A-Z "
+  puts "Command Mode: Will prompt for a command to run on a file, after selecting using hotkey"
+  puts "Selection Mode: Each selection adds to selection list (toggles)"
+  puts "                Upon exiting mode, user is prompted for a command to run on selected files"
+  puts
+  $bindings.each_pair { |k, v| puts "#{k.ljust(7)}  =>  #{v}" }
+  get_char
+
+end
+def main_menu
+  h = { "s" => "sort_menu", "f" => "filter_menu", "c" => "command_menu" , "x" => "extras"}
+  menu "Main Menu", h
+end
+def menu title, h
+  return unless h
+
+  pbold "#{title}"
+  h.each_pair { |k, v| puts "#{k}: #{v}" }
+  ch = get_char
+  binding = h[ch]
+  if binding
+    if respond_to?(binding, true)
+      send(binding)
+    end
+  end
+  return ch, binding
+end
+
+def sort_menu
+  lo = nil
+  h = { "n" => "newest", "o" => "oldest", 
+    "l" => "largest", "s" => "smallest" , "m" => "name" , "r" => "rname", "d" => "dirs", "c" => "clear" }
+  ch, menu_text = menu "Sort Menu", h
+  case menu_text
+  when "newest"
+    lo="om"
+  when "oldest"
+    lo="Om"
+  when "largest"
+    lo="OL"
+  when "smallest"
+    lo="oL"
+  when "name"
+    lo="on"
+  when "rname"
+    lo="On"
+  when "dirs"
+    lo="/"
+  when "clear"
+    lo=""
+  end
+  ## This needs to persist and be a part of all listings, put in change_dir.
+  $files = `zsh -c 'print -rl -- *(#{lo}M)'`.split("\n") if lo
+  #$files =$(eval "print -rl -- ${pattern}(${MFM_LISTORDER}$filterstr)")
+end
+
+def command_menu
+  ## 
+  #  since these involve full paths, we need more space, like only one column
+  #
+  ## in these cases, getting back to the earlier dir, back to earlier listing
+  # since we've basically overlaid the old listing
+  #
+  # should be able to sort THIS listing and not rerun command. But for that I'd need to use
+  # xargs ls -t etc rather than the zsh sort order. But we can run a filter using |.
+  #
+  h = { "a" => "ack", "f" => "ffind", "l" => "locate", "t" => "today" }
+  ch, menu_text = menu "Command Menu", h
+  case menu_text
+  when "ack"
+    print "Enter a pattern to search: "
+    pattern = gets.chomp
+    $files = `ack -l #{pattern}`.split("\n")
+  when "ffind"
+    print "Enter a pattern to find: "
+    pattern = gets.chomp
+    $files = `find . -name #{pattern}`.split("\n")
+  when "locate"
+    print "Enter a pattern to locate: "
+    pattern = gets.chomp
+    $files = `locate #{pattern}`.split("\n")
+  end
+end
+def extras
+  h = { "1" => "one_column", "2" => "multi_column"}
+  ch, menu_text = menu "Extras Menu", h
+  case menu_text
+  when "one_column"
+    $pagesize = ROWS
+  when "multi_column"
+    $pagesize = 60
+
+  end
+end
+
+def pbold text
+  puts "#{BOLD}#{text}#{BOLD_OFF}"
 end
 
 run if __FILE__ == $PROGRAM_NAME
