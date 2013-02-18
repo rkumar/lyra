@@ -5,7 +5,7 @@
 #       Author: rkumar http://github.com/rkumar/lyra/
 #         Date: 2013-02-17 - 17:48
 #      License: GPL
-#  Last update: 2013-02-18 16:05
+#  Last update: 2013-02-18 17:42
 # ----------------------------------------------------------------------------- #
 #  lyra.rb  Copyright (C) 2012-2013 rahul kumar
 #require 'readline'
@@ -21,7 +21,25 @@ require 'shellwords'
 # copy into PATH
 # alias y=~/bin/lyra.rb
 # y
-VERSION="0.0.2"
+VERSION="0.0.3"
+
+$bindings = {}
+$bindings = {
+  "M-a" => "select_all",
+  "M-A" => "unselect_all",
+  "@"   => "selection_toggle",
+  "!"   => "command_mode",
+  ","   => "goto_parent_dir",
+  "'"   => "goto_entry_starting_with",
+  "/"   => "enter_regex",
+  "M-p"   => "prev_page",
+  "M-n"   => "next_page",
+  "SPACE"   => "next_page",
+
+  "+"   => "goto_dir"
+}
+
+## clean this up a bit, copied from shell program and macro'd 
 $kh=Hash.new
 $kh["OP"]="F1"
 $kh["[A"]="UP"
@@ -64,12 +82,6 @@ $kh[KEY_F8]="F8"
 $kh[KEY_F9]="F9"
 $kh[KEY_F10]="F10"
 
-$bindings = {}
-$bindings = {
-  "M-a" => "select_all",
-  "M-A" => "unselect_all",
-  "+"   => "goto_dir"
-}
 def get_char
   begin
     system("stty raw -echo 2>/dev/null") # turn raw input on
@@ -116,6 +128,7 @@ end
 #require 'highline/import'
 
 $IDX="123456789abcdefghijklmnoprstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+PAGESIZE = 60
 $selected_files = Array.new
 #$selection_mode = false
 #$command_mode = false
@@ -143,7 +156,7 @@ def run()
 
   selectedix = nil
   $patt=""
-  sta=0
+  $sta=0
   while true
     i = 0
     if $patt
@@ -152,25 +165,16 @@ def run()
       $view = $files
     end
     fl=$view.size
-    sta = 0 if sta > fl || sta < 0
-    vp = $view[sta, 60]
-    fin = sta + vp.size
+    $sta = 0 if $sta > fl || $sta < 0
+    vp = $view[$sta, PAGESIZE]
+    fin = $sta + vp.size
     system("clear")
     # title
     print "#{GREEN}#{$help}#{CLEAR}\n"
-    print "#{BOLD}#{Dir.pwd}  #{sta + 1} to #{fin} of #{fl}#{CLEAR}\n"
+    print "#{BOLD}#{Dir.pwd}  #{$sta + 1} to #{fin} of #{fl}#{CLEAR}\n"
     buff = columnate vp, ROWS
     buff.each {|line| print line, "\n" }
     print
-    #while i < 25 
-      #ind=$IDX[i]
-      #mark=""
-      #mark="x" if selectedix == i
-      #print "#{mark}#{ind}) #{view[ctr]} \n"
-      #i += 1
-      #ctr += 1
-      #break if ctr >= fl
-    #end
     # prompt
     #print "#{$files.size}, #{view.size} sta=#{sta} (#{patt}): "
     _mm = ""
@@ -187,41 +191,6 @@ def run()
       ctr = 0
     elsif ch == "BACKSPACE"
       $patt = $patt[0..-2]
-      ctr = 0
-    elsif ch == "/"
-      print "Enter pattern: "
-      $patt = gets
-      $patt.chomp!
-      ctr = 0
-    elsif ch == "SPACE"
-      sta += 60
-    elsif ch == "M-n"
-      sta += 60
-    elsif ch == "M-p"
-      sta -= 60
-    elsif ch == "@"
-      if $mode == 'SEL'
-        # we seem to be coming out of select mode with some files
-        if $selected_files.size > 0
-          run_command $selected_files
-        end
-        $mode = nil
-      else
-        #$selection_mode = !$selection_mode
-        $mode = 'SEL'
-      end
-    elsif ch == "!"
-      $mode = 'COM'
-      #$command_mode = !$command_mode
-    elsif ch == "ESCAPE"
-      $mode = nil
-    elsif ch == ","
-      $patt=nil
-      change_dir ".."
-    elsif ch == "'"
-      print "Entries starting with: "
-      fc = get_char
-      $patt = "^#{fc}"
       ctr = 0
     else
       binding = $bindings[ch]
@@ -331,6 +300,42 @@ def goto_dir
   print "Enter path: "
   path = gets.chomp
   open_file File.expand_path(path)
+end
+def selection_toggle
+      if $mode == 'SEL'
+        # we seem to be coming out of select mode with some files
+        if $selected_files.size > 0
+          run_command $selected_files
+        end
+        $mode = nil
+      else
+        #$selection_mode = !$selection_mode
+        $mode = 'SEL'
+      end
+end
+def command_mode
+  $mode = 'COM'
+end
+def goto_parent_dir
+  change_dir ".."
+end
+def goto_entry_starting_with
+  print "Entries starting with: "
+  fc = get_char
+  $patt = "^#{fc}"
+  ctr = 0
+end
+def enter_regex
+  print "Enter pattern: "
+  $patt = gets
+  $patt.chomp!
+  ctr = 0
+end
+def next_page
+  $sta += PAGESIZE
+end
+def prev_page
+  $sta -= PAGESIZE
 end
 
 run if __FILE__ == $PROGRAM_NAME
