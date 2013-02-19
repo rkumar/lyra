@@ -5,7 +5,7 @@
 #       Author: rkumar http://github.com/rkumar/lyra/
 #         Date: 2013-02-17 - 17:48
 #      License: GPL
-#  Last update: 2013-02-19 15:47
+#  Last update: 2013-02-19 18:48
 # ----------------------------------------------------------------------------- #
 #  lyra.rb  Copyright (C) 2012-2013 rahul kumar
 #require 'readline'
@@ -20,6 +20,7 @@ require 'shellwords'
 # alias y=~/bin/lyra.rb
 # y
 VERSION="0.0.5-alpha"
+O_CONFIG=true
 
 $bindings = {}
 $bindings = {
@@ -480,7 +481,7 @@ def command_menu
   end
 end
 def extras
-  h = { "1" => "one_column", "2" => "multi_column"}
+  h = { "1" => "one_column", "2" => "multi_column", "r" => "config_read" , "w" => "config_write"}
   ch, menu_text = menu "Extras Menu", h
   case menu_text
   when "one_column"
@@ -509,10 +510,31 @@ def pop_dir
   end
   ## XXX make sure thre is something to pop
   d = $visited_dirs.delete_at 0
+  ## XXX make sure the dir exists, cuold have been deleted. can be an error or crash otherwise
   $visited_dirs.push d
   Dir.chdir d
   $files = `zsh -c 'print -rl -- *(M)'`.split("\n")
   $patt=nil
+end
+def config_read
+  f =  File.expand_path("~/.zfminfo")
+  if File.exists? f
+    load f
+    $visited_dirs.push(*(DIRS.split ":"))
+    $visited_files.push(*(FILES.split ":"))
+  end
+end
+
+def config_write
+  # Putting it in a format that zfm can also read and write
+  f1 =  File.expand_path("~/.zfminfo")
+  d = $visited_dirs.join ":"
+  f = $visited_files.join ":"
+  File.open(f1, 'w+') do |f2|  
+    # use "\n" for two lines of text  
+    f2.puts "DIRS=\"#{d}\""
+    f2.puts "FILES=\"#{f}\""
+  end
 end
 
 def pbold text
