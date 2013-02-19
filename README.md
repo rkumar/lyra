@@ -3,6 +3,9 @@ lyra
 
 lightning-fast file navigator
 
+Screenshot:
+     http://i47.tinypic.com/35bt7b9.jpg
+
 ##INSTALL##
 
 *  Copy lyra.rb into PATH, e.g. $HOME/bin
@@ -26,12 +29,15 @@ Oh wait, I also use **zsh** for getting the files. Actually, i guess i could jus
 
 ## Keys ##
 
+*  ?  - help (will always display latest bindings)
 *  M-n and M-p for paging
 *  1-9a-zA-Z for selecting a file and opening it (or cd into it)
 *  @  go into selection mode (toggle). selection keys will add to list of selected files (toggle actually)
 *  !  go into command mode, upon selecting a file, will ask for command to run on file
 *  /  will ask for regex pattern to filter file list
 *  "," go to parent dir (mnemonic is "&lt;")
+*  +   ask for path to goto (or open if file)
+*  `   (backtick) menu for sorting, running ack/locate/find etc
 
 
 Other navigation keys are being added for popping, changing dir etc. 
