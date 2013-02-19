@@ -5,7 +5,7 @@
 #       Author: rkumar http://github.com/rkumar/lyra/
 #         Date: 2013-02-17 - 17:48
 #      License: GPL
-#  Last update: 2013-02-19 18:48
+#  Last update: 2013-02-19 21:13
 # ----------------------------------------------------------------------------- #
 #  lyra.rb  Copyright (C) 2012-2013 rahul kumar
 #require 'readline'
@@ -32,13 +32,14 @@ $bindings = {
   ","   => "goto_parent_dir",
   "+"   => "goto_dir",
   "."   => "pop_dir",
-  "'"   => "goto_entry_starting_with",
+  "'"   => "goto_bookmark",
   "/"   => "enter_regex",
   "M-p"   => "prev_page",
   "M-n"   => "next_page",
   "SPACE"   => "next_page",
   "M-f"   => "select_visited_files",
   "M-d"   => "select_visited_dirs",
+  "M-m"   => "get_bookmark",
   "C-c"   => "refresh",
   "ESCAPE"   => "refresh",
 
@@ -142,6 +143,7 @@ end
 $IDX="123456789abcdefghijklmnoprstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 $pagesize = 60
 $selected_files = Array.new
+$bookmarks = {}
 #$selection_mode = false
 #$command_mode = false
 $mode = nil
@@ -372,13 +374,30 @@ end
 def goto_parent_dir
   change_dir ".."
 end
-def goto_entry_starting_with
-  print "Entries starting with: "
-  fc = get_char
+def goto_entry_starting_with fc=nil
+  unless fc
+    print "Entries starting with: "
+    fc = get_char
+  end
   return if fc.size != 1
   $patt = "^#{fc}"
   ctr = 0
 end
+def goto_bookmark
+  print "Enter bookmark char: "
+  ch = get_char
+  if ch =~ /^[A-Z]$/
+    d = $bookmarks[ch]
+    if d
+      change_dir d
+    else
+      perror "#{ch} not a bookmark"
+    end
+  else
+    goto_entry_starting_with ch
+  end
+end
+
 def enter_regex
   print "Enter pattern: "
   $patt = gets
@@ -518,11 +537,17 @@ def pop_dir
 end
 def config_read
   f =  File.expand_path("~/.zfminfo")
-  if File.exists? f
     load f
+    # maybe we should check for these existing else crash will happen.
     $visited_dirs.push(*(DIRS.split ":"))
     $visited_files.push(*(FILES.split ":"))
-  end
+    #$bookmarks.push(*bookmarks) if bookmarks
+    chars = ('A'..'Z')
+    chars.each do |ch|
+      if Kernel.const_defined? "BM_#{ch}"
+        $bookmarks[ch] = Kernel.const_get "BM_#{ch}"
+      end
+    end
 end
 
 def config_write
@@ -534,11 +559,29 @@ def config_write
     # use "\n" for two lines of text  
     f2.puts "DIRS=\"#{d}\""
     f2.puts "FILES=\"#{f}\""
+    $bookmarks.each_pair { |k, val| 
+      f2.puts "BM_#{k}=\"#{val}\""
+      #f2.puts "BOOKMARKS[\"#{k}\"]=\"#{val}\""
+    }
+  end
+end
+def get_bookmark
+  print "Enter (upper case) char for bookmark: "
+  ch = get_char
+  if ch =~ /^[A-Z]$/
+    $bookmarks[ch] = Dir.pwd
+  else
+    print "Bookmark must be upper-case character"
+    get_char
   end
 end
 
 def pbold text
   puts "#{BOLD}#{text}#{BOLD_OFF}"
+end
+def perror text
+  puts "#{RED}#{text}#{CLEAR}"
+  get_char
 end
 
 run if __FILE__ == $PROGRAM_NAME
