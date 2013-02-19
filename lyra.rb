@@ -5,7 +5,7 @@
 #       Author: rkumar http://github.com/rkumar/lyra/
 #         Date: 2013-02-17 - 17:48
 #      License: GPL
-#  Last update: 2013-02-19 21:13
+#  Last update: 2013-02-20 00:44
 # ----------------------------------------------------------------------------- #
 #  lyra.rb  Copyright (C) 2012-2013 rahul kumar
 #require 'readline'
@@ -25,6 +25,7 @@ O_CONFIG=true
 $bindings = {}
 $bindings = {
   "`"   => "main_menu",
+  "="   => "toggle_menu",
   "!"   => "command_mode",
   "@"   => "selection_mode_toggle",
   "M-a" => "select_all",
@@ -159,17 +160,18 @@ YELLOW     = "\e[33m"
 BLUE       = "\e[34m"
 REVERSE    = "\e[7m"
 $patt=nil
+$ignorecase = true
 
 $visited_files = []
 $visited_dirs = []
 
 #$help = "#{BOLD}1-9a-zA-Z#{BOLD_OFF} Select #{BOLD}/#{BOLD_OFF} Grep #{BOLD}'#{BOLD_OFF} First char  #{BOLD}M-n/p#{BOLD_OFF} Paging  #{BOLD}!#{BOLD_OFF} Command Mode  #{BOLD}@#{BOLD_OFF} Selection Mode  #{BOLD}q#{BOLD_OFF} Quit"
 
-$help = "#{BOLD}?#{BOLD_OFF} Help  #{BOLD}!#{BOLD_OFF} Command Mode  #{BOLD}@#{BOLD_OFF} Selection Mode  #{BOLD}q#{BOLD_OFF} Quit "
+$help = "#{BOLD}?#{BOLD_OFF} Help  #{BOLD}!#{BOLD_OFF} Command Mode  #{BOLD}=#{BOLD_OFF} Toggle Menu #{BOLD}@#{BOLD_OFF} Selection Mode  #{BOLD}q#{BOLD_OFF} Quit "
 
 def run()
   ctr=0
-  $files = `zsh -c 'print -rl -- *(M)'`.split("\n")
+  $files = `zsh -c 'print -rl -- *(#{$hidden}M)'`.split("\n")
   fl=$files.size
 
   selectedix = nil
@@ -178,7 +180,11 @@ def run()
   while true
     i = 0
     if $patt
-      $view = $files.grep(/#{$patt}/)
+      if $ignorecase
+        $view = $files.grep(/#{$patt}/i)
+      else
+        $view = $files.grep(/#{$patt}/)
+      end
     else 
       $view = $files
     end
@@ -333,11 +339,13 @@ def change_dir f
   $visited_dirs.insert(0, Dir.pwd)
   f = File.expand_path(f)
   Dir.chdir f
-  $files = `zsh -c 'print -rl -- *(M)'`.split("\n")
+  #$files = `zsh -c 'print -rl -- *(M)'`.split("\n")
+  $files = `zsh -c 'print -rl -- *(#{$hidden}M)'`.split("\n")
   $patt=nil
 end
 def refresh
-    $files = `zsh -c 'print -rl -- *(M)'`.split("\n")
+    #$files = `zsh -c 'print -rl -- *(M)'`.split("\n")
+    $files = `zsh -c 'print -rl -- *(#{$hidden}M)'`.split("\n")
     $patt=nil
 end
 def unselect_all
@@ -427,6 +435,10 @@ def main_menu
   h = { "s" => "sort_menu", "f" => "filter_menu", "c" => "command_menu" , "x" => "extras"}
   menu "Main Menu", h
 end
+def toggle_menu
+  h = { "h" => "toggle_hidden", "c" => "toggle_case", "l" => "toggle_long_list" , "1" => "toggle_columns"}
+  menu "Toggle Menu", h
+end
 def menu title, h
   return unless h
 
@@ -440,6 +452,21 @@ def menu title, h
     end
   end
   return ch, binding
+end
+def toggle_menu
+  h = { "h" => "toggle_hidden", "c" => "toggle_case", "l" => "toggle_long_list" , "1" => "toggle_columns"}
+  ch, menu_text = menu "Toggle Menu", h
+  case menu_text
+  when "toggle_hidden"
+    $hidden = $hidden ? nil : "D"
+    refresh
+  when "toggle_case"
+    #$ignorecase = $ignorecase ? "" : "i"
+    $ignorecase = !$ignorecase
+    refresh
+  when "toggle_columns"
+    $pagesize = $pagesize==60 ? ROWS : 60
+  end
 end
 
 def sort_menu
@@ -466,7 +493,7 @@ def sort_menu
     lo=""
   end
   ## This needs to persist and be a part of all listings, put in change_dir.
-  $files = `zsh -c 'print -rl -- *(#{lo}M)'`.split("\n") if lo
+  $files = `zsh -c 'print -rl -- *(#{lo}#{$hidden}M)'`.split("\n") if lo
   #$files =$(eval "print -rl -- ${pattern}(${MFM_LISTORDER}$filterstr)")
 end
 
@@ -496,7 +523,7 @@ def command_menu
     pattern = gets.chomp
     $files = `locate #{pattern}`.split("\n")
   when "today"
-    $files = `zsh -c 'print -rl -- *(Mm0)'`.split("\n")
+    $files = `zsh -c 'print -rl -- *(#{$hidden}Mm0)'`.split("\n")
   end
 end
 def extras
@@ -532,7 +559,7 @@ def pop_dir
   ## XXX make sure the dir exists, cuold have been deleted. can be an error or crash otherwise
   $visited_dirs.push d
   Dir.chdir d
-  $files = `zsh -c 'print -rl -- *(M)'`.split("\n")
+  $files = `zsh -c 'print -rl -- *(#{$hidden}M)'`.split("\n")
   $patt=nil
 end
 def config_read
