@@ -5,7 +5,7 @@
 #       Author: rkumar http://github.com/rkumar/lyra/
 #         Date: 2013-02-17 - 17:48
 #      License: GPL
-#  Last update: 2013-02-19 12:19
+#  Last update: 2013-02-19 15:47
 # ----------------------------------------------------------------------------- #
 #  lyra.rb  Copyright (C) 2012-2013 rahul kumar
 #require 'readline'
@@ -24,12 +24,13 @@ VERSION="0.0.5-alpha"
 $bindings = {}
 $bindings = {
   "`"   => "main_menu",
-  "@"   => "selection_toggle",
   "!"   => "command_mode",
+  "@"   => "selection_mode_toggle",
   "M-a" => "select_all",
   "M-A" => "unselect_all",
   ","   => "goto_parent_dir",
   "+"   => "goto_dir",
+  "."   => "pop_dir",
   "'"   => "goto_entry_starting_with",
   "/"   => "enter_regex",
   "M-p"   => "prev_page",
@@ -37,6 +38,8 @@ $bindings = {
   "SPACE"   => "next_page",
   "M-f"   => "select_visited_files",
   "M-d"   => "select_visited_dirs",
+  "C-c"   => "refresh",
+  "ESCAPE"   => "refresh",
 
   "?"   => "print_help",
   "F1"   => "print_help"
@@ -164,9 +167,6 @@ $help = "#{BOLD}?#{BOLD_OFF} Help  #{BOLD}!#{BOLD_OFF} Command Mode  #{BOLD}@#{B
 def run()
   ctr=0
   $files = `zsh -c 'print -rl -- *(M)'`.split("\n")
-  if $files.nil? || $files.empty?
-    exit 0
-  end
   fl=$files.size
 
   selectedix = nil
@@ -183,10 +183,12 @@ def run()
     $sta = 0 if $sta >= fl || $sta < 0
     vp = $view[$sta, $pagesize]
     fin = $sta + vp.size
+    $title ||= Dir.pwd
     system("clear")
     # title
-    print "#{GREEN}#{$help}#{CLEAR}  lyra #{VERSION}\n"
-    print "#{BOLD}#{Dir.pwd}  #{$sta + 1} to #{fin} of #{fl}#{CLEAR}\n"
+    print "#{GREEN}#{$help}  #{BLUE}lyra #{VERSION}#{CLEAR}\n"
+    print "#{BOLD}#{$title}  #{$sta + 1} to #{fin} of #{fl}#{CLEAR}\n"
+    $title = nil
     buff = columnate vp, ROWS
     # needed the next line to see how much extra we were going in padding
     #buff.each {|line| print "#{REVERSE}#{line}#{CLEAR}\n" }
@@ -302,7 +304,7 @@ def open_file f
   else
     system("$EDITOR #{Shellwords.escape(f)}")
     f = Dir.pwd + "/" + f if f[0] != '/'
-    $visited_files.push(f)
+    $visited_files.insert(0, f)
   end
 end
 def run_command f
@@ -325,11 +327,14 @@ def run_command f
 end
 
 def change_dir f
-    Dir.chdir f
+  $visited_dirs.insert(0, Dir.pwd)
+  f = File.expand_path(f)
+  Dir.chdir f
+  $files = `zsh -c 'print -rl -- *(M)'`.split("\n")
+  $patt=nil
+end
+def refresh
     $files = `zsh -c 'print -rl -- *(M)'`.split("\n")
-    # Could be a relative path
-    f = Dir.pwd + "/" + f if f[0] != '/'
-    $visited_dirs.push(f)
     $patt=nil
 end
 def unselect_all
@@ -343,7 +348,7 @@ def goto_dir
   path = gets.chomp
   open_file File.expand_path(path)
 end
-def selection_toggle
+def selection_mode_toggle
       if $mode == 'SEL'
         # we seem to be coming out of select mode with some files
         if $selected_files.size > 0
@@ -369,6 +374,7 @@ end
 def goto_entry_starting_with
   print "Entries starting with: "
   fc = get_char
+  return if fc.size != 1
   $patt = "^#{fc}"
   ctr = 0
 end
@@ -469,6 +475,8 @@ def command_menu
     print "Enter a pattern to locate: "
     pattern = gets.chomp
     $files = `locate #{pattern}`.split("\n")
+  when "today"
+    $files = `zsh -c 'print -rl -- *(Mm0)'`.split("\n")
   end
 end
 def extras
@@ -483,10 +491,28 @@ def extras
   end
 end
 def select_visited_dirs
-  $files = $visited_dirs
+  $title = "Visited Directories"
+  $files = $visited_dirs.uniq
 end
 def select_visited_files
-  $files = $visited_files
+  # not yet a unique list, needs to be unique and have latest pushed to top
+  $title = "Visited Files"
+  $files = $visited_files.uniq
+end
+
+## part copied and changed from change_dir since we don't dir going back on top
+#  or we'll be stuck in a cycle
+def pop_dir
+  # the first time we pop, we need to put the current on stack
+  if !$visited_dirs.index(Dir.pwd)
+    $visited_dirs.push Dir.pwd
+  end
+  ## XXX make sure thre is something to pop
+  d = $visited_dirs.delete_at 0
+  $visited_dirs.push d
+  Dir.chdir d
+  $files = `zsh -c 'print -rl -- *(M)'`.split("\n")
+  $patt=nil
 end
 
 def pbold text
