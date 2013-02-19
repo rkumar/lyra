@@ -4,7 +4,7 @@ lyra
 lightning-fast file navigator
 
 Screenshot:
-     http://i47.tinypic.com/35bt7b9.jpg
+     http://oi47.tinypic.com/35bt7b9.jpg
 
 ##INSTALL##
 
