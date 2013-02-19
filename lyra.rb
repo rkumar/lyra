@@ -5,7 +5,7 @@
 #       Author: rkumar http://github.com/rkumar/lyra/
 #         Date: 2013-02-17 - 17:48
 #      License: GPL
-#  Last update: 2013-02-19 00:46
+#  Last update: 2013-02-19 12:19
 # ----------------------------------------------------------------------------- #
 #  lyra.rb  Copyright (C) 2012-2013 rahul kumar
 #require 'readline'
@@ -19,7 +19,7 @@ require 'shellwords'
 # copy into PATH
 # alias y=~/bin/lyra.rb
 # y
-VERSION="0.0.4-alpha"
+VERSION="0.0.5-alpha"
 
 $bindings = {}
 $bindings = {
@@ -35,6 +35,8 @@ $bindings = {
   "M-p"   => "prev_page",
   "M-n"   => "next_page",
   "SPACE"   => "next_page",
+  "M-f"   => "select_visited_files",
+  "M-d"   => "select_visited_dirs",
 
   "?"   => "print_help",
   "F1"   => "print_help"
@@ -151,6 +153,10 @@ YELLOW     = "\e[33m"
 BLUE       = "\e[34m"
 REVERSE    = "\e[7m"
 $patt=nil
+
+$visited_files = []
+$visited_dirs = []
+
 #$help = "#{BOLD}1-9a-zA-Z#{BOLD_OFF} Select #{BOLD}/#{BOLD_OFF} Grep #{BOLD}'#{BOLD_OFF} First char  #{BOLD}M-n/p#{BOLD_OFF} Paging  #{BOLD}!#{BOLD_OFF} Command Mode  #{BOLD}@#{BOLD_OFF} Selection Mode  #{BOLD}q#{BOLD_OFF} Quit"
 
 $help = "#{BOLD}?#{BOLD_OFF} Help  #{BOLD}!#{BOLD_OFF} Command Mode  #{BOLD}@#{BOLD_OFF} Selection Mode  #{BOLD}q#{BOLD_OFF} Quit "
@@ -225,7 +231,7 @@ def columnate ary, sz
   #
   wid = 30
   ars = ary.size
-  ars = $pagesize
+  ars = [$pagesize, ary.size].min
   d = 4
   if ars <= sz
     wid = COLS - d
@@ -295,6 +301,8 @@ def open_file f
     change_dir f
   else
     system("$EDITOR #{Shellwords.escape(f)}")
+    f = Dir.pwd + "/" + f if f[0] != '/'
+    $visited_files.push(f)
   end
 end
 def run_command f
@@ -319,6 +327,9 @@ end
 def change_dir f
     Dir.chdir f
     $files = `zsh -c 'print -rl -- *(M)'`.split("\n")
+    # Could be a relative path
+    f = Dir.pwd + "/" + f if f[0] != '/'
+    $visited_dirs.push(f)
     $patt=nil
 end
 def unselect_all
@@ -470,6 +481,12 @@ def extras
     $pagesize = 60
 
   end
+end
+def select_visited_dirs
+  $files = $visited_dirs
+end
+def select_visited_files
+  $files = $visited_files
 end
 
 def pbold text
