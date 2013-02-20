@@ -5,7 +5,7 @@
 #       Author: rkumar http://github.com/rkumar/lyra/
 #         Date: 2013-02-17 - 17:48
 #      License: GPL
-#  Last update: 2013-02-20 00:44
+#  Last update: 2013-02-20 15:18
 # ----------------------------------------------------------------------------- #
 #  lyra.rb  Copyright (C) 2012-2013 rahul kumar
 #require 'readline'
@@ -19,7 +19,7 @@ require 'shellwords'
 # copy into PATH
 # alias y=~/bin/lyra.rb
 # y
-VERSION="0.0.5-alpha"
+VERSION="0.0.6-alpha"
 O_CONFIG=true
 
 $bindings = {}
@@ -227,6 +227,23 @@ def run()
     end
   end
 end
+  GIGA_SIZE = 1073741824.0
+  MEGA_SIZE = 1048576.0
+  KILO_SIZE = 1024.0
+
+  # Return the file size with a readable style.
+  def readable_file_size(size, precision)
+    case
+      #when size == 1 : "1 B"
+      when size < KILO_SIZE then "%d B" % size
+      when size < MEGA_SIZE then "%.#{precision}f K" % (size / KILO_SIZE)
+      when size < GIGA_SIZE then "%.#{precision}f M" % (size / MEGA_SIZE)
+      else "%.#{precision}f G" % (size / GIGA_SIZE)
+    end
+  end
+  def date_format t
+    t.strftime "%Y/%m/%d"
+  end
 ## 
 #
 # print in columns
@@ -263,6 +280,11 @@ def columnate ary, sz
       mark=" x " if $selected_files.index(ary[ix])
 
       f = ary[ix]
+      if $long_listing
+        stat = File.stat(f)
+        #"%-*s\t%10s\t%s" % [max_len,f,  readable_file_size(stat.size,1), date_format(stat.mtime)]
+        f = "%10s  %s  %s" % [readable_file_size(stat.size,1), date_format(stat.mtime), f]
+      end
       if f.size > wid
         f = f[0, wid-2]+"$ "
       else
@@ -466,6 +488,10 @@ def toggle_menu
     refresh
   when "toggle_columns"
     $pagesize = $pagesize==60 ? ROWS : 60
+  when "toggle_long_list"
+    $long_listing = !$long_listing
+    $pagesize = ROWS
+    refresh
   end
 end
 
