@@ -5,7 +5,7 @@
 #       Author: rkumar http://github.com/rkumar/lyra/
 #         Date: 2013-02-17 - 17:48
 #      License: GPL
-#  Last update: 2013-02-21 00:57
+#  Last update: 2013-02-21 01:06
 # ----------------------------------------------------------------------------- #
 #  lyra.rb  Copyright (C) 2012-2013 rahul kumar
 #require 'readline'
@@ -667,6 +667,8 @@ def pop_dir
   $files = `zsh -c 'print -rl -- *(#{$hidden}M)'`.split("\n")
   $patt=nil
 end
+#
+## read dirs and files and bookmarks from file
 def config_read
   f =  File.expand_path("~/.zfminfo")
   if File.readable? f
@@ -684,6 +686,7 @@ def config_read
   end
 end
 
+## save dirs and files and bookmarks to a file
 def config_write
   # Putting it in a format that zfm can also read and write
   f1 =  File.expand_path("~/.zfminfo")
@@ -699,17 +702,19 @@ def config_write
     }
   end
 end
+
+## accept a character to save this dir as a bookmark
 def create_bookmark
   print "Enter (upper case) char for bookmark: "
   ch = get_char
   if ch =~ /^[A-Z]$/
     $bookmarks[ch] = Dir.pwd
   else
-    print "Bookmark must be upper-case character"
-    get_char
+    perror "Bookmark must be upper-case character"
   end
 end
 
+## create a list of dirs in which some action has happened, for saving
 def push_used_dirs d=Dir.pwd
   $used_dirs.index(d) || $used_dirs.push(d)
 end
