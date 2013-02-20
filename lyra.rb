@@ -5,7 +5,7 @@
 #       Author: rkumar http://github.com/rkumar/lyra/
 #         Date: 2013-02-17 - 17:48
 #      License: GPL
-#  Last update: 2013-02-20 19:59
+#  Last update: 2013-02-21 00:57
 # ----------------------------------------------------------------------------- #
 #  lyra.rb  Copyright (C) 2012-2013 rahul kumar
 #require 'readline'
@@ -174,6 +174,7 @@ $used_dirs = []
 
 $help = "#{BOLD}?#{BOLD_OFF} Help  #{BOLD}!#{BOLD_OFF} Command Mode  #{BOLD}=#{BOLD_OFF} Toggle Menu #{BOLD}@#{BOLD_OFF} Selection Mode  #{BOLD}q#{BOLD_OFF} Quit "
 
+  ## main loop which calls all other programs
 def run()
   ctr=0
   config_read
@@ -204,7 +205,9 @@ def run()
     print "#{GREEN}#{$help}  #{BLUE}lyra #{VERSION}#{CLEAR}\n"
     print "#{BOLD}#{$title}  #{$sta + 1} to #{fin} of #{fl}#{CLEAR}\n"
     $title = nil
-    buff = columnate vp, ROWS
+    # split into 2 procedures so columnate can e clean and reused.
+    buff = format vp
+    buff = columnate buff, ROWS
     # needed the next line to see how much extra we were going in padding
     #buff.each {|line| print "#{REVERSE}#{line}#{CLEAR}\n" }
     buff.each {|line| print line, "\n"  }
@@ -251,6 +254,7 @@ def readable_file_size(size, precision)
   else "%.#{precision}f G" % (size / GIGA_SIZE)
   end
 end
+## format date for file given stat
 def date_format t
   t.strftime "%Y/%m/%d"
 end
@@ -285,29 +289,18 @@ def columnate ary, sz
     ## ctr refers to the index in the column
     ctr=0
     while ctr < sz
-      ind=$IDX[ix]
-      mark="   "
-      mark=" x " if $selected_files.index(ary[ix])
 
       f = ary[ix]
-      if $long_listing
-        stat = File.stat(f)
-        #"%-*s\t%10s\t%s" % [max_len,f,  readable_file_size(stat.size,1), date_format(stat.mtime)]
-        f = "%10s  %s  %s" % [readable_file_size(stat.size,1), date_format(stat.mtime), f]
-      end
       if f.size > wid
         f = f[0, wid-2]+"$ "
       else
         f = f.ljust(wid)
       end
 
-      #s = "#{ind}#{mark}#{ary[ix].ljust(wid)}"
-      s = "#{ind}#{mark}#{f}"
-  
       if buff[ctr]
-        buff[ctr] += s
+        buff[ctr] += f
       else
-        buff[ctr] = s
+        buff[ctr] = f
       end
 
       ctr+=1
@@ -318,6 +311,39 @@ def columnate ary, sz
   end
   return buff
 end
+## formats the data with number, mark and details 
+def format ary
+  #buff = Array.new
+  buff = Array.new(ary.size)
+  return buff if ary.nil? || ary.size == 0
+
+  # determine width based on number of files to show
+  # if less than sz then 1 col and full width
+  #
+  # ix refers to the index in the complete file list, wherease we only show 60 at a time
+  ix=0
+  ctr=0
+  ary.each do |f|
+    ## ctr refers to the index in the column
+    ind=$IDX[ix]
+    mark="   "
+    mark=" x " if $selected_files.index(ary[ix])
+
+    if $long_listing
+      stat = File.stat(f)
+      f = "%10s  %s  %s" % [readable_file_size(stat.size,1), date_format(stat.mtime), f]
+    end
+
+    s = "#{ind}#{mark}#{f}"
+
+    buff[ctr] = s
+
+    ctr+=1
+    ix+=1
+  end
+  return buff
+end
+## select file based on key pressed
 def select_hint view, ch
   ix = $IDX.index(ch)
   if ix
@@ -332,6 +358,7 @@ def select_hint view, ch
     #selectedix=ix
   end
 end
+## toggle selection state of file
 def toggle_select f
   if $selected_files.index f
     $selected_files.delete f
@@ -339,6 +366,7 @@ def toggle_select f
     $selected_files.push f
   end
 end
+## open file or directory
 def open_file f
   if File.directory? f
     change_dir f
@@ -352,6 +380,9 @@ def open_file f
       # could check home dir or CDPATH env variable DO
   end
 end
+
+## run command on given file/s
+#   Accepts command from user
 def run_command f
   files=nil
   case f
@@ -380,22 +411,35 @@ def change_dir f
   $files = `zsh -c 'print -rl -- *(#{$hidden}M)'`.split("\n")
   $patt=nil
 end
+
+## refresh listing after some change like option change, or toggle
 def refresh
     #$files = `zsh -c 'print -rl -- *(M)'`.split("\n")
     $files = `zsh -c 'print -rl -- *(#{$hidden}M)'`.split("\n")
     $patt=nil
 end
+#
+## unselect all files
 def unselect_all
   $selected_files = []
 end
+
+## select all files
 def select_all
   $selected_files = $view.dup
 end
+
+## accept dir to goto and change to that ( can be a file too)
 def goto_dir
   print "Enter path: "
   path = gets.chomp
   open_file File.expand_path(path)
 end
+
+## toggle mode to selection or not
+#  In selection, pressed hotkey selects a file without opening, one can keep selecting
+#  (or deselecting).
+#
 def selection_mode_toggle
       if $mode == 'SEL'
         # we seem to be coming out of select mode with some files
@@ -445,6 +489,8 @@ def goto_bookmark ch=nil
   end
 end
 
+
+## take regex from user, to run on files on screen, user can filter file names
 def enter_regex
   print "Enter pattern: "
   $patt = gets
@@ -466,7 +512,10 @@ def print_help
   puts "Selection Mode: Each selection adds to selection list (toggles)"
   puts "                Upon exiting mode, user is prompted for a command to run on selected files"
   puts
-  $bindings.each_pair { |k, v| puts "#{k.ljust(7)}  =>  #{v}" }
+  ary = []
+  $bindings.each_pair { |k, v| ary.push "#{k.ljust(7)}  =>  #{v}" }
+  ary = columnate ary, ROWS - 7
+  ary.each {|line| print line, "\n"  }
   get_char
 
 end
@@ -516,7 +565,7 @@ def toggle_menu
     $pagesize = $pagesize==60 ? ROWS : 60
   when "toggle_long_list"
     $long_listing = !$long_listing
-    $pagesize = ROWS
+    $pagesize = $pagesize==60 ? ROWS : 60
     refresh
   end
 end
