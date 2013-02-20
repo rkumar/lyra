@@ -5,7 +5,7 @@
 #       Author: rkumar http://github.com/rkumar/lyra/
 #         Date: 2013-02-17 - 17:48
 #      License: GPL
-#  Last update: 2013-02-20 15:18
+#  Last update: 2013-02-20 19:55
 # ----------------------------------------------------------------------------- #
 #  lyra.rb  Copyright (C) 2012-2013 rahul kumar
 #require 'readline'
@@ -39,8 +39,10 @@ $bindings = {
   "M-n"   => "next_page",
   "SPACE"   => "next_page",
   "M-f"   => "select_visited_files",
-  "M-d"   => "select_visited_dirs",
-  "M-m"   => "get_bookmark",
+  "M-d"   => "select_used_dirs",
+  "M-b"   => "select_bookmarks",
+  "M-m"   => "create_bookmark",
+  "M-M"   => "show_marks",
   "C-c"   => "refresh",
   "ESCAPE"   => "refresh",
 
@@ -163,7 +165,10 @@ $patt=nil
 $ignorecase = true
 
 $visited_files = []
+## dir stack for popping
 $visited_dirs = []
+## dirs where some work has been done, for saving and restoring
+$used_dirs = []
 
 #$help = "#{BOLD}1-9a-zA-Z#{BOLD_OFF} Select #{BOLD}/#{BOLD_OFF} Grep #{BOLD}'#{BOLD_OFF} First char  #{BOLD}M-n/p#{BOLD_OFF} Paging  #{BOLD}!#{BOLD_OFF} Command Mode  #{BOLD}@#{BOLD_OFF} Selection Mode  #{BOLD}q#{BOLD_OFF} Quit"
 
@@ -171,6 +176,7 @@ $help = "#{BOLD}?#{BOLD_OFF} Help  #{BOLD}!#{BOLD_OFF} Command Mode  #{BOLD}=#{B
 
 def run()
   ctr=0
+  config_read
   $files = `zsh -c 'print -rl -- *(#{$hidden}M)'`.split("\n")
   fl=$files.size
 
@@ -226,24 +232,28 @@ def run()
       #p ch
     end
   end
+  puts "bye"
+  config_write
 end
-  GIGA_SIZE = 1073741824.0
-  MEGA_SIZE = 1048576.0
-  KILO_SIZE = 1024.0
 
-  # Return the file size with a readable style.
-  def readable_file_size(size, precision)
-    case
-      #when size == 1 : "1 B"
-      when size < KILO_SIZE then "%d B" % size
-      when size < MEGA_SIZE then "%.#{precision}f K" % (size / KILO_SIZE)
-      when size < GIGA_SIZE then "%.#{precision}f M" % (size / MEGA_SIZE)
-      else "%.#{precision}f G" % (size / GIGA_SIZE)
-    end
+## code related to long listing of files
+GIGA_SIZE = 1073741824.0
+MEGA_SIZE = 1048576.0
+KILO_SIZE = 1024.0
+
+# Return the file size with a readable style.
+def readable_file_size(size, precision)
+  case
+    #when size == 1 : "1 B"
+  when size < KILO_SIZE then "%d B" % size
+  when size < MEGA_SIZE then "%.#{precision}f K" % (size / KILO_SIZE)
+  when size < GIGA_SIZE then "%.#{precision}f M" % (size / MEGA_SIZE)
+  else "%.#{precision}f G" % (size / GIGA_SIZE)
   end
-  def date_format t
-    t.strftime "%Y/%m/%d"
-  end
+end
+def date_format t
+  t.strftime "%Y/%m/%d"
+end
 ## 
 #
 # print in columns
@@ -332,10 +342,14 @@ end
 def open_file f
   if File.directory? f
     change_dir f
-  else
+  elsif File.readable? f
     system("$EDITOR #{Shellwords.escape(f)}")
     f = Dir.pwd + "/" + f if f[0] != '/'
     $visited_files.insert(0, f)
+    push_used_dirs Dir.pwd
+  else
+    perror "open_file: #{f} not found"
+      # could check home dir or CDPATH env variable DO
   end
 end
 def run_command f
@@ -354,6 +368,7 @@ def run_command f
   puts "#{command} #{files} #{command2}"
   system "#{command} #{files} #{command2}"
   puts "Press a key ..."
+  push_used_dirs Dir.pwd
   get_char
 end
 
@@ -413,9 +428,11 @@ def goto_entry_starting_with fc=nil
   $patt = "^#{fc}"
   ctr = 0
 end
-def goto_bookmark
-  print "Enter bookmark char: "
-  ch = get_char
+def goto_bookmark ch=nil
+  unless ch
+    print "Enter bookmark char: "
+    ch = get_char
+  end
   if ch =~ /^[A-Z]$/
     d = $bookmarks[ch]
     if d
@@ -452,6 +469,15 @@ def print_help
   $bindings.each_pair { |k, v| puts "#{k.ljust(7)}  =>  #{v}" }
   get_char
 
+end
+def show_marks
+  puts
+  puts "Bookmarks: "
+  $bookmarks.each_pair { |k, v| puts "#{k.ljust(7)}  =>  #{v}" }
+  puts
+  print "Enter bookmark to goto: "
+  ch = get_char
+  goto_bookmark(ch) if ch =~ /^[A-Z]$/
 end
 def main_menu
   h = { "s" => "sort_menu", "f" => "filter_menu", "c" => "command_menu" , "x" => "extras"}
@@ -563,14 +589,18 @@ def extras
 
   end
 end
-def select_visited_dirs
-  $title = "Visited Directories"
-  $files = $visited_dirs.uniq
+def select_used_dirs
+  $title = "Used Directories"
+  $files = $used_dirs.uniq
 end
 def select_visited_files
   # not yet a unique list, needs to be unique and have latest pushed to top
   $title = "Visited Files"
   $files = $visited_files.uniq
+end
+def select_bookmarks
+  $title = "Bookmarks"
+  $files = $bookmarks.values
 end
 
 ## part copied and changed from change_dir since we don't dir going back on top
@@ -590,9 +620,10 @@ def pop_dir
 end
 def config_read
   f =  File.expand_path("~/.zfminfo")
+  if File.readable? f
     load f
     # maybe we should check for these existing else crash will happen.
-    $visited_dirs.push(*(DIRS.split ":"))
+    $used_dirs.push(*(DIRS.split ":"))
     $visited_files.push(*(FILES.split ":"))
     #$bookmarks.push(*bookmarks) if bookmarks
     chars = ('A'..'Z')
@@ -601,12 +632,13 @@ def config_read
         $bookmarks[ch] = Kernel.const_get "BM_#{ch}"
       end
     end
+  end
 end
 
 def config_write
   # Putting it in a format that zfm can also read and write
   f1 =  File.expand_path("~/.zfminfo")
-  d = $visited_dirs.join ":"
+  d = $used_dirs.join ":"
   f = $visited_files.join ":"
   File.open(f1, 'w+') do |f2|  
     # use "\n" for two lines of text  
@@ -618,7 +650,7 @@ def config_write
     }
   end
 end
-def get_bookmark
+def create_bookmark
   print "Enter (upper case) char for bookmark: "
   ch = get_char
   if ch =~ /^[A-Z]$/
@@ -629,6 +661,9 @@ def get_bookmark
   end
 end
 
+def push_used_dirs d=Dir.pwd
+  $used_dirs.index(d) || $used_dirs.push(d)
+end
 def pbold text
   puts "#{BOLD}#{text}#{BOLD_OFF}"
 end
