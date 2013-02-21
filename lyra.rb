@@ -5,7 +5,7 @@
 #       Author: rkumar http://github.com/rkumar/lyra/
 #         Date: 2013-02-17 - 17:48
 #      License: GPL
-#  Last update: 2013-02-21 01:06
+#  Last update: 2013-02-21 20:26
 # ----------------------------------------------------------------------------- #
 #  lyra.rb  Copyright (C) 2012-2013 rahul kumar
 #require 'readline'
@@ -21,6 +21,7 @@ require 'shellwords'
 # y
 VERSION="0.0.7-alpha"
 O_CONFIG=true
+CONFIG_FILE="$HOME/.lyrainfo"
 
 $bindings = {}
 $bindings = {
@@ -147,8 +148,6 @@ $IDX="123456789abcdefghijklmnoprstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 $pagesize = 60
 $selected_files = Array.new
 $bookmarks = {}
-#$selection_mode = false
-#$command_mode = false
 $mode = nil
 LINES=%x(tput lines).to_i
 COLS=%x(tput cols).to_i
@@ -163,6 +162,7 @@ BLUE       = "\e[34m"
 REVERSE    = "\e[7m"
 $patt=nil
 $ignorecase = true
+$quitting = false
 
 $visited_files = []
 ## dir stack for popping
@@ -172,7 +172,7 @@ $used_dirs = []
 
 #$help = "#{BOLD}1-9a-zA-Z#{BOLD_OFF} Select #{BOLD}/#{BOLD_OFF} Grep #{BOLD}'#{BOLD_OFF} First char  #{BOLD}M-n/p#{BOLD_OFF} Paging  #{BOLD}!#{BOLD_OFF} Command Mode  #{BOLD}@#{BOLD_OFF} Selection Mode  #{BOLD}q#{BOLD_OFF} Quit"
 
-$help = "#{BOLD}?#{BOLD_OFF} Help  #{BOLD}!#{BOLD_OFF} Command Mode  #{BOLD}=#{BOLD_OFF} Toggle Menu #{BOLD}@#{BOLD_OFF} Selection Mode  #{BOLD}q#{BOLD_OFF} Quit "
+$help = "#{BOLD}?#{BOLD_OFF} Help   #{BOLD}`#{BOLD_OFF} Menu   #{BOLD}!#{BOLD_OFF} Command   #{BOLD}=#{BOLD_OFF} Toggle   #{BOLD}@#{BOLD_OFF} Selection Mode  #{BOLD}q#{BOLD_OFF} Quit "
 
   ## main loop which calls all other programs
 def run()
@@ -234,6 +234,7 @@ def run()
       send(binding) if binding
       #p ch
     end
+    break if $quitting
   end
   puts "bye"
   config_write
@@ -479,6 +480,12 @@ def goto_bookmark ch=nil
   end
   if ch =~ /^[A-Z]$/
     d = $bookmarks[ch]
+    # this is if we use zfm's bookmarks which have a position
+    # this way we leave the position as is, so it gets written back
+    if d.index(":")
+      ix = d.index(":")
+      d = d[0,ix]
+    end
     if d
       change_dir d
     else
@@ -670,7 +677,8 @@ end
 #
 ## read dirs and files and bookmarks from file
 def config_read
-  f =  File.expand_path("~/.zfminfo")
+  #f =  File.expand_path("~/.zfminfo")
+  f =  File.expand_path(CONFIG_FILE)
   if File.readable? f
     load f
     # maybe we should check for these existing else crash will happen.
@@ -689,7 +697,8 @@ end
 ## save dirs and files and bookmarks to a file
 def config_write
   # Putting it in a format that zfm can also read and write
-  f1 =  File.expand_path("~/.zfminfo")
+  #f1 =  File.expand_path("~/.zfminfo")
+  f1 =  File.expand_path(CONFIG_FILE)
   d = $used_dirs.join ":"
   f = $visited_files.join ":"
   File.open(f1, 'w+') do |f2|  
