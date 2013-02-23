@@ -30,17 +30,22 @@ Oh wait, I also use **zsh** for getting the files. Actually, i guess i could jus
 ## Keys ##
 
 *  ?  - help (will always display latest bindings)
-*  M-n and M-p for paging
-*  1-9a-zA-Z for selecting a file and opening it (or cd into it)
+*  M-n and M-p for paging (also SPACE)
+*  1-9a-zA-Z for selecting a file and opening it (or cd into dir)
 *  @  go into selection mode (toggle). selection keys will add to list of selected files (toggle actually)
-*  !  go into command mode, upon selecting a file, will ask for command to run on file
+*  !  go into command mode, upon selecting a file, will ask for command to run on file/dir
 *  /  will ask for regex pattern to filter file list
-*  "," go to parent dir (mnemonic is "&lt;")
+*  "," (comma) go to parent dir (mnemonic is "&lt;")
+*  .   (dot) pop directories (go back)
 *  +   ask for path to goto (or open if file)
 *  `   (backtick) menu for sorting, running ack/locate/find etc
+*  M-d  - visited directories (where a file has been opened or command run)
+*  M-f  - visited files
+*  M-m  - Create a bookmark for current directory
+*  '   (single quote) go to bookmark
+*  M-M  - Show marks
 
-
-Other navigation keys are being added for popping, changing dir etc. 
+Other navigation keys are being added for popping, changing dir etc. Check "?" for latest bindings.
 
 ## Motivation ##
 
@@ -51,6 +56,10 @@ set of zfm's functionality. I aim to keep this in one file so it can just be put
 
 I don't see myself implementing the whole vim bindings here, since HINT mode is really faster for getting to a file in one stroke. Also, the whole arrow key movement thing in zfm is nice to look at but is a slow way of navigation. I might boldface selected files currently there's just an "x" mark on it.
 
-Please try out zfm, it rocks (IMO).
+## Files ##
+
+Currently no config file, but bookmarks and visited files and dirs are saved in $HOME/.lyrainfo upon quitting.
+
+Please try out zfm, it rocks (IMO). Find it on github (https://github.com/rkumar/zfm)
 
 lyra is named after a constellation, not Lyra Belacqua !
