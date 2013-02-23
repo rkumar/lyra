@@ -5,7 +5,7 @@
 #       Author: rkumar http://github.com/rkumar/lyra/
 #         Date: 2013-02-17 - 17:48
 #      License: GPL
-#  Last update: 2013-02-21 20:26
+#  Last update: 2013-02-24 01:31
 # ----------------------------------------------------------------------------- #
 #  lyra.rb  Copyright (C) 2012-2013 rahul kumar
 #require 'readline'
@@ -21,7 +21,7 @@ require 'shellwords'
 # y
 VERSION="0.0.7-alpha"
 O_CONFIG=true
-CONFIG_FILE="$HOME/.lyrainfo"
+CONFIG_FILE="~/.lyrainfo"
 
 $bindings = {}
 $bindings = {
@@ -34,6 +34,7 @@ $bindings = {
   ","   => "goto_parent_dir",
   "+"   => "goto_dir",
   "."   => "pop_dir",
+  ":"   => "subcommand",
   "'"   => "goto_bookmark",
   "/"   => "enter_regex",
   "M-p"   => "prev_page",
@@ -163,7 +164,7 @@ REVERSE    = "\e[7m"
 $patt=nil
 $ignorecase = true
 $quitting = false
-
+$modified = $writing = false
 $visited_files = []
 ## dir stack for popping
 $visited_dirs = []
@@ -219,8 +220,10 @@ def run()
     print "\r#{_mm}#{$patt} >"
     ch = get_char
     #puts
-    break if ch == 'q' 
-    if  ch =~ /^[1-9a-zA-Z]$/
+    #break if ch == "q"
+    if ch == "q"
+      q_command
+    elsif  ch =~ /^[1-9a-zA-Z]$/
       # this is insert mode, not hint mode
       #patt += ch
       # hint mode
@@ -237,7 +240,7 @@ def run()
     break if $quitting
   end
   puts "bye"
-  config_write
+  config_write if $writing
 end
 
 ## code related to long listing of files
@@ -394,9 +397,15 @@ def run_command f
     files = Shellwords.escape(f)
   end
   print "Run a command on #{files}: "
-  command = gets().chomp
-  print "Second part of command: "
-  command2 = gets().chomp
+  begin
+    command = gets().chomp
+    return if command.size == 0
+    print "Second part of command: "
+    command2 = gets().chomp
+  rescue Exception => ex
+    perror "Canceled command, press a key"
+    return
+  end
   puts "#{command} #{files} #{command2}"
   system "#{command} #{files} #{command2}"
   puts "Press a key ..."
@@ -433,7 +442,13 @@ end
 ## accept dir to goto and change to that ( can be a file too)
 def goto_dir
   print "Enter path: "
-  path = gets.chomp
+  begin
+    path = gets.chomp
+  #rescue => ex
+  rescue Exception => ex
+    perror "Cancelled cd, press a key"
+    return
+  end
   open_file File.expand_path(path)
 end
 
@@ -482,11 +497,11 @@ def goto_bookmark ch=nil
     d = $bookmarks[ch]
     # this is if we use zfm's bookmarks which have a position
     # this way we leave the position as is, so it gets written back
-    if d.index(":")
-      ix = d.index(":")
-      d = d[0,ix]
-    end
     if d
+      if d.index(":")
+        ix = d.index(":")
+        d = d[0,ix]
+      end
       change_dir d
     else
       perror "#{ch} not a bookmark"
@@ -710,6 +725,7 @@ def config_write
       #f2.puts "BOOKMARKS[\"#{k}\"]=\"#{val}\""
     }
   end
+  $writing = $modified = false
 end
 
 ## accept a character to save this dir as a bookmark
@@ -718,9 +734,49 @@ def create_bookmark
   ch = get_char
   if ch =~ /^[A-Z]$/
     $bookmarks[ch] = Dir.pwd
+    $modified = true
   else
     perror "Bookmark must be upper-case character"
   end
+end
+def subcommand
+  print "Enter command: "
+  begin
+    command = gets().chomp
+  rescue Exception => ex
+    return
+  end
+  if command == "q"
+    if $modified
+      print "Do you want to save bookmarks? (y/n): "
+      ch = get_char
+      if ch == "y"
+        $writing = true
+        $quitting = true
+      elsif ch == "n"
+        $quitting = true
+        print "Quitting without saving bookmarks"
+      else
+        perror "No action taken."
+      end
+    end
+  elsif command == "wq"
+    $quitting = true
+    $writing = true
+  elsif command == "x"
+    $quitting = true
+    $writing = true if $modified
+  elsif command == "p"
+    system "echo $PWD | pbcopy"
+    puts "Stored PWD in clipboard (using pbcopy)"
+  end
+end
+def q_command
+  puts "Press w to save bookmarks before quitting " if $modified
+  print "Press another q to quit "
+  ch = get_char
+  $quitting = true if ch == "q"
+  $quitting = $writing = true if ch == "w"
 end
 
 ## create a list of dirs in which some action has happened, for saving
