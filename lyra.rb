@@ -5,7 +5,7 @@
 #       Author: rkumar http://github.com/rkumar/lyra/
 #         Date: 2013-02-17 - 17:48
 #      License: GPL
-#  Last update: 2013-02-24 01:31
+#  Last update: 2013-02-24 21:30
 # ----------------------------------------------------------------------------- #
 #  lyra.rb  Copyright (C) 2012-2013 rahul kumar
 #require 'readline'
@@ -19,7 +19,7 @@ require 'shellwords'
 # copy into PATH
 # alias y=~/bin/lyra.rb
 # y
-VERSION="0.0.7-alpha"
+VERSION="0.0.7-bootes"
 O_CONFIG=true
 CONFIG_FILE="~/.lyrainfo"
 
@@ -334,8 +334,19 @@ def format ary
     mark=" x " if $selected_files.index(ary[ix])
 
     if $long_listing
-      stat = File.stat(f)
-      f = "%10s  %s  %s" % [readable_file_size(stat.size,1), date_format(stat.mtime), f]
+      begin
+        unless File.exist? f
+          last = f[-1]
+          if last == " " || last == "@" || last == '*'
+            stat = File.stat(f.chop)
+          end
+        else
+          stat = File.stat(f)
+        end
+        f = "%10s  %s  %s" % [readable_file_size(stat.size,1), date_format(stat.mtime), f]
+      rescue Exception => e
+        f = "%10s  %s  %s" % ["?", "??????????", f]
+      end
     end
 
     s = "#{ind}#{mark}#{f}"
@@ -352,6 +363,7 @@ def select_hint view, ch
   ix = $IDX.index(ch)
   if ix
     f = view[ix]
+    return unless f
     if $mode == 'SEL'
       toggle_select f
     elsif $mode == 'COM'
@@ -372,6 +384,15 @@ def toggle_select f
 end
 ## open file or directory
 def open_file f
+  return unless f
+  unless File.exist? f
+    # this happens if we use (T) in place of (M) 
+    # it places a space after normal files and @ and * which borks commands
+    last = f[-1]
+    if last == " " || last == "@" || last == '*'
+      f = f.chop
+    end
+  end
   if File.directory? f
     change_dir f
   elsif File.readable? f
@@ -380,7 +401,7 @@ def open_file f
     $visited_files.insert(0, f)
     push_used_dirs Dir.pwd
   else
-    perror "open_file: #{f} not found"
+    perror "open_file: (#{f}) not found"
       # could check home dir or CDPATH env variable DO
   end
 end
