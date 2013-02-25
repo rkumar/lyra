@@ -5,7 +5,7 @@
 #       Author: rkumar http://github.com/rkumar/lyra/
 #         Date: 2013-02-17 - 17:48
 #      License: GPL
-#  Last update: 2013-02-24 21:30
+#  Last update: 2013-02-25 15:13
 # ----------------------------------------------------------------------------- #
 #  lyra.rb  Copyright (C) 2012-2013 rahul kumar
 #require 'readline'
@@ -19,7 +19,7 @@ require 'shellwords'
 # copy into PATH
 # alias y=~/bin/lyra.rb
 # y
-VERSION="0.0.7-bootes"
+VERSION="0.0.7-bootes2"
 O_CONFIG=true
 CONFIG_FILE="~/.lyrainfo"
 
@@ -465,13 +465,28 @@ def goto_dir
   print "Enter path: "
   begin
     path = gets.chomp
-  #rescue => ex
+    #rescue => ex
   rescue Exception => ex
     perror "Cancelled cd, press a key"
     return
   end
-  open_file File.expand_path(path)
-end
+  f = File.expand_path(path)
+  unless File.directory? f
+    ## check for env variable
+    tmp = ENV[path]
+    if tmp.nil? || !File.directory?( tmp )
+      ## check for dir in home 
+      tmp = File.expand_path("~/#{path}")
+      if File.directory? tmp
+        f = tmp
+      end
+    else
+      f = tmp
+    end
+  end
+
+  open_file f
+  end
 
 ## toggle mode to selection or not
 #  In selection, pressed hotkey selects a file without opening, one can keep selecting
