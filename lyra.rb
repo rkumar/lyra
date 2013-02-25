@@ -5,10 +5,10 @@
 #       Author: rkumar http://github.com/rkumar/lyra/
 #         Date: 2013-02-17 - 17:48
 #      License: GPL
-#  Last update: 2013-02-25 15:13
+#  Last update: 2013-02-25 20:13
 # ----------------------------------------------------------------------------- #
 #  lyra.rb  Copyright (C) 2012-2013 rahul kumar
-#require 'readline'
+require 'readline'
 require 'io/wait'
 # http://www.ruby-doc.org/stdlib-1.9.3/libdoc/shellwords/rdoc/Shellwords.html
 require 'shellwords'
@@ -45,11 +45,17 @@ $bindings = {
   "M-b"   => "select_bookmarks",
   "M-m"   => "create_bookmark",
   "M-M"   => "show_marks",
-  "C-c"   => "refresh",
-  "ESCAPE"   => "refresh",
+  "C-c"   => "escape",
+  "ESCAPE"   => "escape",
+  "TAB"   => "views",
+  "C-i"   => "views",
+  "?"   => "child_dirs",
+  "ENTER"   => "select_first",
 
-  "?"   => "print_help",
-  "F1"   => "print_help"
+
+  "M-?"   => "print_help",
+  "F1"   => "print_help",
+  "F2"   => "child_dirs"
 
 }
 
@@ -107,9 +113,12 @@ def get_char
     #if $stdin.ready?
       c = $stdin.getc
       cn=c.ord
+      return "ENTER" if cn == 10 || cn == 13
       return "BACKSPACE" if cn == 127
       return "C-SPACE" if cn == 0
       return "SPACE" if cn == 32
+      # next does not seem to work, you need to bind C-i
+      return "TAB" if cn == 8
       if cn >= 0 && cn < 27
         x= cn + 96
         return "C-#{x.chr}"
@@ -170,10 +179,12 @@ $visited_files = []
 $visited_dirs = []
 ## dirs where some work has been done, for saving and restoring
 $used_dirs = []
-
+$sorto = nil
+$viewctr = 0
+$history = []
 #$help = "#{BOLD}1-9a-zA-Z#{BOLD_OFF} Select #{BOLD}/#{BOLD_OFF} Grep #{BOLD}'#{BOLD_OFF} First char  #{BOLD}M-n/p#{BOLD_OFF} Paging  #{BOLD}!#{BOLD_OFF} Command Mode  #{BOLD}@#{BOLD_OFF} Selection Mode  #{BOLD}q#{BOLD_OFF} Quit"
 
-$help = "#{BOLD}?#{BOLD_OFF} Help   #{BOLD}`#{BOLD_OFF} Menu   #{BOLD}!#{BOLD_OFF} Command   #{BOLD}=#{BOLD_OFF} Toggle   #{BOLD}@#{BOLD_OFF} Selection Mode  #{BOLD}q#{BOLD_OFF} Quit "
+$help = "#{BOLD}M-?#{BOLD_OFF} Help   #{BOLD}`#{BOLD_OFF} Menu   #{BOLD}!#{BOLD_OFF} Command   #{BOLD}=#{BOLD_OFF} Toggle   #{BOLD}@#{BOLD_OFF} Selection Mode  #{BOLD}q#{BOLD_OFF} Quit "
 
   ## main loop which calls all other programs
 def run()
@@ -204,7 +215,7 @@ def run()
     system("clear")
     # title
     print "#{GREEN}#{$help}  #{BLUE}lyra #{VERSION}#{CLEAR}\n"
-    print "#{BOLD}#{$title}  #{$sta + 1} to #{fin} of #{fl}#{CLEAR}\n"
+    print "#{BOLD}#{$title}  #{$sta + 1} to #{fin} of #{fl}  #{$sorto}#{CLEAR}\n"
     $title = nil
     # split into 2 procedures so columnate can e clean and reused.
     buff = format vp
@@ -408,6 +419,8 @@ end
 
 ## run command on given file/s
 #   Accepts command from user
+#   After putting readline in place of gets, pressing a C-c has a delayed effect. It goes intot
+#   exception bloack after executing other commands and still does not do the return !
 def run_command f
   files=nil
   case f
@@ -419,16 +432,24 @@ def run_command f
   end
   print "Run a command on #{files}: "
   begin
-    command = gets().chomp
+    #Readline::HISTORY.push(*values) 
+    command = Readline::readline('>', true)
+    #command = gets().chomp
     return if command.size == 0
     print "Second part of command: "
-    command2 = gets().chomp
+    #command2 = gets().chomp
+    command2 = Readline::readline('>', true)
+    puts "#{command} #{files} #{command2}"
+    system "#{command} #{files} #{command2}"
   rescue Exception => ex
     perror "Canceled command, press a key"
     return
   end
-  puts "#{command} #{files} #{command2}"
-  system "#{command} #{files} #{command2}"
+  begin
+  rescue Exception => ex
+  end
+
+  refresh
   puts "Press a key ..."
   push_used_dirs Dir.pwd
   get_char
@@ -438,15 +459,21 @@ def change_dir f
   $visited_dirs.insert(0, Dir.pwd)
   f = File.expand_path(f)
   Dir.chdir f
-  #$files = `zsh -c 'print -rl -- *(M)'`.split("\n")
-  $files = `zsh -c 'print -rl -- *(#{$hidden}M)'`.split("\n")
+  $files = `zsh -c 'print -rl -- *(#{$sorto}#{$hidden}M)'`.split("\n")
   $patt=nil
+end
+
+## clear sort order and refresh listing, used typically if you are in some view
+#  such as visited dirs or files
+def escape
+  $sorto = nil
+  $viewctr = 0
+  refresh
 end
 
 ## refresh listing after some change like option change, or toggle
 def refresh
-    #$files = `zsh -c 'print -rl -- *(M)'`.split("\n")
-    $files = `zsh -c 'print -rl -- *(#{$hidden}M)'`.split("\n")
+    $files = `zsh -c 'print -rl -- *(#{$sorto}#{$hidden}M)'`.split("\n")
     $patt=nil
 end
 #
@@ -630,12 +657,14 @@ end
 
 def sort_menu
   lo = nil
-  h = { "n" => "newest", "o" => "oldest", 
+  h = { "n" => "newest", "a" => "accessed", "o" => "oldest", 
     "l" => "largest", "s" => "smallest" , "m" => "name" , "r" => "rname", "d" => "dirs", "c" => "clear" }
   ch, menu_text = menu "Sort Menu", h
   case menu_text
   when "newest"
     lo="om"
+  when "accessed"
+    lo="oa"
   when "oldest"
     lo="Om"
   when "largest"
@@ -651,6 +680,7 @@ def sort_menu
   when "clear"
     lo=""
   end
+  $sorto = lo
   ## This needs to persist and be a part of all listings, put in change_dir.
   $files = `zsh -c 'print -rl -- *(#{lo}#{$hidden}M)'`.split("\n") if lo
   #$files =$(eval "print -rl -- ${pattern}(${MFM_LISTORDER}$filterstr)")
@@ -722,7 +752,7 @@ def pop_dir
   ## XXX make sure the dir exists, cuold have been deleted. can be an error or crash otherwise
   $visited_dirs.push d
   Dir.chdir d
-  $files = `zsh -c 'print -rl -- *(#{$hidden}M)'`.split("\n")
+  $files = `zsh -c 'print -rl -- *(#{$sorto}#{$hidden}M)'`.split("\n")
   $patt=nil
 end
 #
@@ -795,6 +825,8 @@ def subcommand
       else
         perror "No action taken."
       end
+    else
+      $quitting = true
     end
   elsif command == "wq"
     $quitting = true
@@ -808,11 +840,33 @@ def subcommand
   end
 end
 def q_command
-  puts "Press w to save bookmarks before quitting " if $modified
-  print "Press another q to quit "
-  ch = get_char
+  if $modified
+    puts "Press w to save bookmarks before quitting " if $modified
+    print "Press another q to quit "
+    ch = get_char
+  else
+    $quitting = true
+  end
   $quitting = true if ch == "q"
   $quitting = $writing = true if ch == "w"
+end
+
+def views
+  views=%w[/ om oa Om OL oL On on]
+  viewlabels=%w[Dirs Newest Accessed Oldest Largest Smallest Reverse Name]
+  $sorto = views[$viewctr]
+  $viewctr += 1
+  $viewctr = 0 if $viewctr > views.size
+
+  $files = `zsh -c 'print -rl -- *(#{$sorto}#{$hidden}M)'`.split("\n")
+
+end
+def child_dirs
+  $files = `zsh -c 'print -rl -- *(/#{$sorto}#{$hidden}M)'`.split("\n")
+end
+def select_first
+  ## vp is local there, so i can do $vp[0]
+  open_file $view[$sta] if $view[$sta]
 end
 
 ## create a list of dirs in which some action has happened, for saving
