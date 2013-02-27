@@ -5,7 +5,7 @@
 #       Author: rkumar http://github.com/rkumar/lyra/
 #         Date: 2013-02-17 - 17:48
 #      License: GPL
-#  Last update: 2013-02-25 20:13
+#  Last update: 2013-02-27 17:44
 # ----------------------------------------------------------------------------- #
 #  lyra.rb  Copyright (C) 2012-2013 rahul kumar
 require 'readline'
@@ -19,7 +19,7 @@ require 'shellwords'
 # copy into PATH
 # alias y=~/bin/lyra.rb
 # y
-VERSION="0.0.7-bootes2"
+VERSION="0.0.8-alpha"
 O_CONFIG=true
 CONFIG_FILE="~/.lyrainfo"
 
@@ -51,6 +51,8 @@ $bindings = {
   "C-i"   => "views",
   "?"   => "child_dirs",
   "ENTER"   => "select_first",
+  "RIGHT"   => "column_next",
+  "LEFT"   => "column_next 1",
 
 
   "M-?"   => "print_help",
@@ -154,7 +156,7 @@ end
 
 #require 'highline/import'
 
-$IDX="123456789abcdefghijklmnoprstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+$IDX="123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPRSTUVWXYZ"
 $pagesize = 60
 $selected_files = Array.new
 $bookmarks = {}
@@ -162,6 +164,7 @@ $mode = nil
 LINES=%x(tput lines).to_i
 COLS=%x(tput cols).to_i
 ROWS = LINES - 4
+$grows = ROWS
 CLEAR      = "\e[0m"
 BOLD       = "\e[1m"
 BOLD_OFF       = "\e[22m"
@@ -170,6 +173,7 @@ GREEN      = "\e[32m"
 YELLOW     = "\e[33m"
 BLUE       = "\e[34m"
 REVERSE    = "\e[7m"
+## GLOBALS
 $patt=nil
 $ignorecase = true
 $quitting = false
@@ -182,9 +186,10 @@ $used_dirs = []
 $sorto = nil
 $viewctr = 0
 $history = []
-#$help = "#{BOLD}1-9a-zA-Z#{BOLD_OFF} Select #{BOLD}/#{BOLD_OFF} Grep #{BOLD}'#{BOLD_OFF} First char  #{BOLD}M-n/p#{BOLD_OFF} Paging  #{BOLD}!#{BOLD_OFF} Command Mode  #{BOLD}@#{BOLD_OFF} Selection Mode  #{BOLD}q#{BOLD_OFF} Quit"
+$stact = 0
+#$help = "#{BOLD}1-9a-zA-Z#{BOLD_OFF} Select #{BOLD}/#{BOLD_OFF} Grep #{BOLD}'#{BOLD_OFF} First char  #{BOLD}M-n/p#{BOLD_OFF} Paging  #{BOLD}!#{BOLD_OFF} Command Mode  #{BOLD}@#{BOLD_OFF} Selection Mode  #{BOLD}Q#{BOLD_OFF} Quit"
 
-$help = "#{BOLD}M-?#{BOLD_OFF} Help   #{BOLD}`#{BOLD_OFF} Menu   #{BOLD}!#{BOLD_OFF} Command   #{BOLD}=#{BOLD_OFF} Toggle   #{BOLD}@#{BOLD_OFF} Selection Mode  #{BOLD}q#{BOLD_OFF} Quit "
+$help = "#{BOLD}M-?#{BOLD_OFF} Help   #{BOLD}`#{BOLD_OFF} Menu   #{BOLD}!#{BOLD_OFF} Command   #{BOLD}=#{BOLD_OFF} Toggle   #{BOLD}@#{BOLD_OFF} Selection Mode  #{BOLD}Q#{BOLD_OFF} Quit "
 
   ## main loop which calls all other programs
 def run()
@@ -209,8 +214,8 @@ def run()
     end
     fl=$view.size
     $sta = 0 if $sta >= fl || $sta < 0
-    vp = $view[$sta, $pagesize]
-    fin = $sta + vp.size
+    $viewport = $view[$sta, $pagesize]
+    fin = $sta + $viewport.size
     $title ||= Dir.pwd
     system("clear")
     # title
@@ -218,7 +223,7 @@ def run()
     print "#{BOLD}#{$title}  #{$sta + 1} to #{fin} of #{fl}  #{$sorto}#{CLEAR}\n"
     $title = nil
     # split into 2 procedures so columnate can e clean and reused.
-    buff = format vp
+    buff = format $viewport
     buff = columnate buff, ROWS
     # needed the next line to see how much extra we were going in padding
     #buff.each {|line| print "#{REVERSE}#{line}#{CLEAR}\n" }
@@ -232,20 +237,28 @@ def run()
     ch = get_char
     #puts
     #break if ch == "q"
-    if ch == "q"
+    if ch == "Q"
       q_command
     elsif  ch =~ /^[1-9a-zA-Z]$/
       # this is insert mode, not hint mode
       #patt += ch
       # hint mode
-      select_hint vp, ch
+      select_hint $viewport, ch
       ctr = 0
     elsif ch == "BACKSPACE"
       $patt = $patt[0..-2]
       ctr = 0
     else
-      binding = $bindings[ch]
-      send(binding) if binding
+      #binding = $bindings[ch]
+      x = $bindings[ch]
+      x = x.split if x
+      if x
+        binding = x.shift
+        args = x
+        send(binding, *args) if binding
+      end
+      #binding = $bindings[ch]
+      #send(binding) if binding
       #p ch
     end
     break if $quitting
@@ -340,9 +353,10 @@ def format ary
   ctr=0
   ary.each do |f|
     ## ctr refers to the index in the column
-    ind=$IDX[ix]
+    #ind=$IDX[ix]
+    ind = get_shortcut(ix)
     mark="   "
-    mark=" x " if $selected_files.index(ary[ix])
+    mark=" * " if $selected_files.index(ary[ix])
 
     if $long_listing
       begin
@@ -371,7 +385,8 @@ def format ary
 end
 ## select file based on key pressed
 def select_hint view, ch
-  ix = $IDX.index(ch)
+  ix = get_index(ch, view.size)
+  #ix = $IDX.index(ch)
   if ix
     f = view[ix]
     return unless f
@@ -461,6 +476,7 @@ def change_dir f
   Dir.chdir f
   $files = `zsh -c 'print -rl -- *(#{$sorto}#{$hidden}M)'`.split("\n")
   $patt=nil
+  $stact = 0
 end
 
 ## clear sort order and refresh listing, used typically if you are in some view
@@ -879,6 +895,28 @@ end
 def perror text
   puts "#{RED}#{text}#{CLEAR}"
   get_char
+end
+## moves column offset so we can reach unindexed columns or entries
+def column_next dir=0
+  if dir == 0
+    $stact += $grows
+    $stact = 0 if $stact >= $viewport.size
+  else
+    $stact -= $grows
+    $stact = 0 if $stact < 0
+  end
+end
+def get_shortcut ix
+  return "<" if ix < $stact
+  ix -= $stact
+  i = $IDX[ix]
+  return i if i
+  return "->"
+end
+def get_index key, vsz=999
+  i = $IDX.index(key)
+  return i+$stact if i
+  return nil
 end
 
 run if __FILE__ == $PROGRAM_NAME
