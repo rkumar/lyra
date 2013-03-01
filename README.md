@@ -44,6 +44,7 @@ Oh wait, I also use **zsh** for getting the files. Actually, i guess i could jus
 *  M-m  - Create a bookmark for current directory
 *  '   (single quote) go to bookmark
 *  M-M  - Show marks
+*  Q to quit
 
 Other navigation keys are being added for popping, changing dir etc. Check "?" for latest bindings.
 
@@ -63,3 +64,5 @@ Currently no config file, but bookmarks and visited files and dirs are saved in 
 Please try out zfm, it rocks (IMO). Find it on github (https://github.com/rkumar/zfm)
 
 lyra is named after a constellation, not Lyra Belacqua !
+
+NOTE: I am continuing development on cetus http://github.com/rkumar/cetus -- I employ a different indexing strategy and I've then developed much further than that. Check out cetus, please.
