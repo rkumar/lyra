@@ -1,6 +1,19 @@
 lyra
 ====
 
+Pad versions of various rbcurse multiline widgets such as table (tabular-widget) and later
+tree etc.
+
+All widgets are to extend textpad or in worst cases contain a textpad. Extending textpad is the easier way
+with least code.
+
+All widgets must maintain functionality and API of their earlier counterparts which I admit are quite screwed
+due to the attr-accessor mess.
+
+------
+
+Ignore following. The executable lyra was continued as cetus gem.
+
 lightning-fast file navigator
 
 Screenshot:

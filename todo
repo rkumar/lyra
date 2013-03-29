@@ -1,0 +1,63 @@
+This is a small ruby write of zfm.
+
+I just want to do the hint portion, have a filemanager with just hints and few simple
+things. We'll avoid the vim part which gets very complicated.
+
+Try to keep it in a single file so it can just be thrown into a folder without requiring
+setup or gems.
+
+Features:
+
+1. allow hotkeys
+2. Allow drilling down, filtering
+3. allow paging
+4. bookmarks for directories
+5. open files or dirs or run a command on them
+6. selection of files and commands on them
+7. find, ack, locate and drill down
+8. Query: date size type
+
+TODO immed:
+
+_    open_file if not readable or text use "open" or ask command and maybe use that
+     for future
+.    move gets to readlne esp for + and for command - done for command, not for + yet
+
+_    Key to show subdirs -- in large dirs with lots of stuff
+     I don't think "/" is going to be used a lot for filtering, one can use another key for that.
+
+     Or else use TAB to show dirs and then newest files, then recent accessed files
+     then siblings etc
+     or something like that
+
+_    Allow zsh stuff as an option, to reduce dependency, otherwise just use normal
+     ruby dir listing.
+
+_    mkdir and create a file
+_    when showing visited files etc "q" quits, unexpectedly. Should return to listing.
+     
+Todo others:
+
+_    8. Query: date size type
+_    when cd'ing with goto_dir maybeif no dir, check if env var by that name, also check cdpath
+     (both zfm and lyra)
+_    filter menu has nothing under it.
+
+
+_    sorting output of locate/ack etc. Should be just allow filters like zfm
+     sort does a refresh so the list will be lost
+     we don't know that this is some other listing, since we use files
+     otoh if you are in long listing then you do see date time and size
+
+_    sorting output of locate/ack etc. Should be just allow filters like zfm
+
+BUGS
+
+x  337 no stat
+
+IDEAS
+_    How about not using 1-9 in hints? We cold use for motion or something else ?
+     use a-z and then use z and x for another a-z. if z or x get a char.
+     That way we can fill all the screen no matter what the size and not restrict
+to 60.
+Also maybe then caps can be used for naviation or other things such as G H L
