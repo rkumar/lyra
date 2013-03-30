@@ -5,7 +5,7 @@
 #       Author: rkumar http://github.com/rkumar/rbcurse/
 #         Date: 2013-03-29 - 20:07
 #      License: Same as Ruby's License (http://www.ruby-lang.org/LICENSE.txt)
-#  Last update: 2013-03-30 01:32
+#  Last update: 2013-03-30 15:19
 # ----------------------------------------------------------------------------- #
 #   tablewidget.rb  Copyright (C) 2012-2013 rahul kumar
 
@@ -19,9 +19,11 @@ require 'rbcurse/core/widgets/textpad'
 # whereas textpad is quite simple. It is easy to just add one's own renderer
 # making the code base simpler to understand and maintain.
 # TODO
-#   _ search
+#   x search - currently fails since line.index is working on an array which matches
+#     complete item not a substring
 #   _ compare to tabular_widget and see what's missing
-#   _ sorting
+#   _ selection stuff
+#   x sorting
 #   _ should we use a datamodel so resultsets can be sent in, what about tabular
 #   _ header to handle events ?
 #
@@ -62,6 +64,94 @@ module Lyra
       @current_index == @max_index
     end
   end
+
+    # This is our default table row sorter.
+    # It does a multiple sort and allows for reverse sort also.
+    # It's a pretty simple sorter and uses sort, not sort_by.
+    # Improvements welcome.
+    # Usage: provide model in constructor or using model method
+    # Call toggle_sort_order(column_index) 
+    # Call sort. 
+    # Currently, this sorts the provided model in-place. Future versions
+    # may maintain a copy, or use a table that provides a mapping of model to result.
+    # # TODO check if column_sortable
+    class DefaultTableRowSorter
+      attr_reader :sort_keys
+      # model is array of data
+      def initialize model=nil
+        self.model = model
+        @columns_sort = []
+        @sort_keys = nil
+      end
+      def model=(model)
+        @model = model
+        @sort_keys = nil
+      end
+      def sortable colindex, tf
+        @columns_sort[colindex] = tf
+      end
+      def sortable? colindex
+        return false if @columns_sort[colindex]==false
+        return true
+      end
+      # should to_s be used for this column
+      def use_to_s colindex
+        return true # TODO
+      end
+      # sorts the model based on sort keys and reverse flags
+      # @sort_keys contains indices to sort on
+      # @reverse_flags is an array of booleans, true for reverse, nil or false for ascending
+      def sort
+        return unless @model
+        return if @sort_keys.empty?
+        $log.debug "TABULAR SORT KEYS #{sort_keys} "
+        # first row is the header which should remain in place
+        # We could have kept column headers separate, but then too much of mucking around
+        # with textpad, this way we avoid touching it
+        header = @model.delete_at 0
+        begin
+          # next line often can give error "array within array" - i think on date fields that 
+          #  contain nils
+        @model.sort!{|x,y| 
+          res = 0
+          @sort_keys.each { |ee| 
+            e = ee.abs-1 # since we had offsetted by 1 earlier
+            abse = e.abs
+            if ee < 0
+              res = y[abse] <=> x[abse]
+            else
+              res = x[e] <=> y[e]
+            end
+            break if res != 0
+          }
+          res
+        }
+        ensure
+          @model.insert 0, header if header
+        end
+      end
+      # toggle the sort order if given column offset is primary sort key
+      # Otherwise, insert as primary sort key, ascending.
+      def toggle_sort_order index
+        index += 1 # increase by 1, since 0 won't multiple by -1
+        # internally, reverse sort is maintained by multiplying number by -1
+        @sort_keys ||= []
+        if @sort_keys.first && index == @sort_keys.first.abs
+          @sort_keys[0] *= -1 
+        else
+          @sort_keys.delete index # in case its already there
+          @sort_keys.delete(index*-1) # in case its already there
+          @sort_keys.unshift index
+          # don't let it go on increasing
+          if @sort_keys.size > 3
+            @sort_keys.pop
+          end
+        end
+      end
+      def set_sort_keys list
+        @sort_keys = list
+      end
+    end #class
   #
   # TODO see how jtable does the renderers and columns stuff.
   #
@@ -147,6 +237,7 @@ module Lyra
 
     dsl_accessor :print_footer
     attr_reader :columns
+    attr_accessor :table_row_sorter
 
     def initialize form = nil, config={}, &block
 
@@ -199,7 +290,6 @@ module Lyra
     def _convert_curpos_to_column  #:nodoc:
       calculate_column_offsets unless @coffsets
       x = 0
-      #curpos = @tp.curpos
       @coffsets.each_with_index { |i, ix| 
         if @curpos < i 
           break
@@ -273,7 +363,7 @@ module Lyra
       fire_dimension_changed
       self
     end
-    def delete ix
+    def delete_at ix
       return unless @content
       fire_dimension_changed
       @content.delete_at ix
@@ -320,5 +410,53 @@ module Lyra
       $log.warn "XXX:  PADREFRESH #{retval}, #{@prow}, #{@pcol}, #{sr}, #{sc}, #{@rows+sr}, #{@cols+sc}." if retval == -1
       # padrefresh can fail if width is greater than NCurses.COLS
     end
-  end
-end
+
+    def create_default_sorter
+      raise "Data not sent in." unless @content
+      @table_row_sorter = DefaultTableRowSorter.new @content
+    end
+    def header_row?
+      true
+    end
+
+    def fire_action_event
+      if header_row?
+        if @table_row_sorter
+          x = _convert_curpos_to_column
+          @table_row_sorter.toggle_sort_order x
+          @table_row_sorter.sort
+          fire_dimension_changed
+        end
+      end
+      super
+    end
+    ## 
+    # Find the next row that contains given string
+    # Overrides textpad since each line is an array
+    # NOTE does not go to next match within row
+    # @return row and col offset of match, or nil
+    # @param String to find
+    def next_match str
+      calculate_column_offsets unless @coffsets
+      first = nil
+      ## content can be string or Chunkline, so we had to write <tt>index</tt> for this.
+      ## =~ does not give an error, but it does not work.
+      @content.each_with_index do |fields, ix|
+        #col = line.index str
+        fields.each_with_index do |f, jx|
+          col = f.index str
+          $log.debug "XXX:  NEXT found (#{str}) ix:#{col} in row #{ix}, field #{jx}, val #{f}"
+          if col
+            col += @coffsets[jx] 
+            first ||= [ ix, col ]
+            if ix > @current_index
+              return [ix, col]
+            end
+          end
+        end
+      end
+      return first
+    end
+
+  end # class TableWidget
+end # module
