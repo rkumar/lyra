@@ -26,11 +26,14 @@ end
 def _edit h, row, title
   _l = longest_in_list h
   _w = _l.size
+  # _w can be longer than 70, assuming that screen is 70 or more
   config = { :width => 70, :title => title }
   bw = get_color $datacolor, :black, :white
   mb = MessageBox.new config do
+    txt = nil
     h.each_with_index { |f, i| 
-      add Field.new :label => "%*s:" % [_w, f], :text => row[i].chomp, :name => i.to_s, 
+      txt = row[i] || ""
+      add Field.new :label => "%*s:" % [_w, f], :text => txt.chomp, :name => i.to_s, 
         :bgcolor => :cyan,
         :display_length => 50,
         :label_color_pair => bw
@@ -87,7 +90,7 @@ begin
     lines.each { |l| arr << l.split("|") }
     #lines.each { |l| arr << l.split("|") }
 
-    tv = TableWidget.new @form, :row => 1, :col => 0, :height => h, :width => w, :name => "tv", :suppress_borders => false do |b|
+    tv = Lyra::TableWidget.new @form, :row => 1, :col => 0, :height => h, :width => w, :name => "tv", :suppress_borders => false do |b|
 
       b.columns = header
       # FIXME why is b.text arr not doing anything and set_content gives a missing error
@@ -103,21 +106,24 @@ begin
       #b.column_hidden 1, true
       #b.numbering = true ## FIXME BROKEN
     end
-    mcr = DefaultTableRenderer.new
+    mcr = Lyra::DefaultTableRenderer.new
     tv.renderer mcr
     mcr.column_model ( tv.column_model )
+    tv.create_default_sorter
 
     # pressing ENTER on a method name will popup details for that method
     tv.bind(:PRESS) { |ev|
-      w = ev.word_under_cursor.strip
-      w = ev.text
+      if @current_index > 0
+        w = ev.word_under_cursor.strip
+        w = ev.text
       # the curpos does not correspond to the formatted display, this is just the array
       # without the width info XXX
-      alert "#{ev.current_index}, #{ev.curpos}: #{w}"
+        alert "#{ev.current_index}, #{ev.curpos}: #{w}"
+      end
     }
     tv.bind_key(?e) { edit_row(tv) }
     tv.bind_key(?i) { insert_row(tv) }
-    tv.bind_key(?D) { tv.delete tv.current_index }
+    tv.bind_key(?D) { tv.delete_at tv.current_index }
     @form.bind_key(?\M-m, "Select methods") {
       tv = @form.by_name["tv"]; 
     }
