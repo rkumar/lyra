@@ -5,7 +5,7 @@
 #       Author: rkumar http://github.com/rkumar/rbcurse/
 #         Date: 2013-03-29 - 20:07
 #      License: Same as Ruby's License (http://www.ruby-lang.org/LICENSE.txt)
-#  Last update: 2013-04-02 22:50
+#  Last update: 2013-04-03 00:52
 # ----------------------------------------------------------------------------- #
 #   tablewidget.rb  Copyright (C) 2012-2013 rahul kumar
 
@@ -172,9 +172,12 @@ module Lyra
       @coffsets = []
       @header_color = :red
       @header_bgcolor = :white
-      @header_attrib = BOLD
+      @header_attrib = NORMAL
+      @color = :white
+      @bgcolor = :black
       @color_pair = $datacolor
       @attrib = NORMAL
+      @_check_coloring = nil
     end
     def header_colors fg, bg
       @header_color = fg
@@ -183,6 +186,7 @@ module Lyra
     def header_attrib att
       @header_attrib = att
     end
+    # set fg and bg color of content rows, default is $datacolor (white on black).
     def content_colors fg, bg
       @color = fg
       @bgcolor = bg
@@ -200,7 +204,7 @@ module Lyra
     #
     # TODO return an array so caller can color columns if need be
     def convert_value_to_text r  
-      str = ""
+      str = []
       fmt = nil
       field = nil
       # we need to loop through chash and get index from it and get that row from r
@@ -243,16 +247,23 @@ module Lyra
       #text = str.join " | "
       #text = @fmstr % str
       text = convert_value_to_text str
-      # check if any specific colors , if so then print colors in a loop with no dependence on colored chunks
-      # then we don't need source pointer
-      if text.index "#["
-        require 'rbcurse/core/include/chunk'
-        @parser ||= Chunks::ColorParser.new :tmux
-        text = @parser.convert_to_chunk text
-        FFI::NCurses.wmove pad, lineno, 0
-        @source.show_colored_chunks text, nil, nil
+      if @_check_coloring
+        $log.debug "XXX:  INSIDE COLORIIN"
+        text = colorize pad, lineno, text
         return
       end
+      # check if any specific colors , if so then print colors in a loop with no dependence on colored chunks
+      # then we don't need source pointer
+      text = text.join
+      $log.debug "XXX:  NOTINSIDE COLORIIN"
+      #if text.index "#["
+        #require 'rbcurse/core/include/chunk'
+        #@parser ||= Chunks::ColorParser.new :tmux
+        #text = @parser.convert_to_chunk text
+        #FFI::NCurses.wmove pad, lineno, 0
+        #@source.show_colored_chunks text, nil, nil
+        #return
+      #end
       # FIXME why repeatedly getting this colorpair
       cp = @color_pair
       att = @attrib
@@ -262,9 +273,13 @@ module Lyra
 
     end
     def render_header pad, lineno, col, columns
+      # I could do it once only but if user sets colors midway we can check once whenvever
+      # repainting
+      check_colors #if @_check_coloring.nil?
       #text = columns.join " | "
       #text = @fmstr % columns
       text = convert_value_to_text columns
+      text = text.join
       bg = @header_bgcolor
       fg = @header_color
       att = @header_attrib
@@ -274,6 +289,40 @@ module Lyra
       FFI::NCurses.mvwaddstr(pad, lineno, col, text)
       FFI::NCurses.wattroff(pad,FFI::NCurses.COLOR_PAIR(cp) | att)
     end
+    # check if we need to individually color columns or we can do the entire
+    # row in one shot
+    def check_colors
+      @chash.each_with_index { |c, i| 
+        next if c.hidden
+        if c.color || c.bgcolor || c.attrib
+          @_check_coloring = true
+          return
+        end
+        @_check_coloring = false
+      }
+    end
+  def colorize pad, lineno, r
+    # the incoming data is already in the order of display based on chash,
+    # so we cannot run chash on it again, so how do we get the color info
+    _offset = 0
+    # we need to get coffsets here FIXME
+    @chash.each_with_index { |c, i| 
+      next if c.hidden
+      text = r[i]
+      color = c.color
+      bg = c.bgcolor
+      if color || bg
+        cp = get_color(@color_pair, color || @color, bg || @bgcolor)
+      else
+        cp = @color_pair
+      end
+      att = c.attrib || @attrib
+      FFI::NCurses.wattron(pad,FFI::NCurses.COLOR_PAIR(cp) | att)
+      FFI::NCurses.mvwaddstr(pad, lineno, _offset, text)
+      FFI::NCurses.wattroff(pad,FFI::NCurses.COLOR_PAIR(cp) | att)
+      _offset += text.length
+    }
+  end
   end
 
   # If we make a pad of the whole thing then the columns will also go out when scrolling
