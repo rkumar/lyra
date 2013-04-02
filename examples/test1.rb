@@ -83,30 +83,38 @@ begin
     h = FFI::NCurses.LINES-4
     w = FFI::NCurses.COLS
     r = 1
-    header = %w[ Status Widget Priority Description Stat Modified]
+    #header = %w[ Status Widget Priority Description Stat Modified]
+    #header = %w[ Pos Last Title Director Year Country Mins BW]
     file = "todocsv.csv"
+    file = "movies1000.txt"
     lines = File.open(file,'r').readlines 
     arr = []
-    lines.each { |l| arr << l.split("|") }
+    lines.each { |l| arr << l.split("~") }
+    lines = nil
     #lines.each { |l| arr << l.split("|") }
 
     tv = Lyra::TableWidget.new @form, :row => 1, :col => 0, :height => h, :width => w, :name => "tv", :suppress_borders => false do |b|
 
-      b.columns = header
-      # FIXME why is b.text arr not doing anything and set_content gives a missing error
-      arr.each do |w|
-        b << w
-      end
-      b.column_width 0, 6
-      b.column_width 2, 5
-      b.column_align 2, :right
-      b.column_width 3, b.calculate_column_width(3)
-      b.column_width 5, 20
+      #b.columns = header
+      
+      b.text arr
+
+      b.model_row 1
+      b.get_column(2).color = "red"
+      b.column_width 0, 5
+      b.column_width 1, 5
+      b.column_width 4, 5
+      #b.column_width 2, 5
+      b.column_align 6, :right
+      #b.column_width 2, b.calculate_column_width(2)
+      b.column_width 2, 50
+      b.column_width 3, 25
+      b.column_width 5, 10
       #b.column_width 3, 55
       #b.column_hidden 1, true
-      #b.numbering = true ## FIXME BROKEN
     end
-    mcr = Lyra::DefaultTableRenderer.new
+    mcr = Lyra::DefaultTableRenderer.new tv
+    mcr.header_colors :yellow, :blue
     tv.renderer mcr
     mcr.column_model ( tv.column_model )
     tv.create_default_sorter
