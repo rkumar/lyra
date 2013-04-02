@@ -5,7 +5,7 @@
 #       Author: rkumar http://github.com/rkumar/rbcurse/
 #         Date: 2013-03-29 - 20:07
 #      License: Same as Ruby's License (http://www.ruby-lang.org/LICENSE.txt)
-#  Last update: 2013-03-30 15:19
+#  Last update: 2013-04-02 22:50
 # ----------------------------------------------------------------------------- #
 #   tablewidget.rb  Copyright (C) 2012-2013 rahul kumar
 
@@ -19,17 +19,21 @@ require 'rbcurse/core/widgets/textpad'
 # whereas textpad is quite simple. It is easy to just add one's own renderer
 # making the code base simpler to understand and maintain.
 # TODO
-#   x search - currently fails since line.index is working on an array which matches
-#     complete item not a substring
 #   _ compare to tabular_widget and see what's missing
 #   _ selection stuff
+#   _ test with resultset from sqlite to see if we can use Array or need to make model
+#     should we use a datamodel so resultsets can be sent in, what about tabular
 #   x sorting
-#   _ should we use a datamodel so resultsets can be sent in, what about tabular
+#   x search - currently fails since line.index is working on an array which matches
+#     complete item not a substring
 #   _ header to handle events ?
 #
 #
 module Lyra
-  class ColumnInfo < Struct.new(:name, :width, :align, :hidden)
+  # column data, one instance for each column
+  # index is the index in the data of this column. This index will not change.
+  # Order of printing columns is determined by the ordering of the objects.
+  class ColumnInfo < Struct.new(:name, :index, :width, :align, :hidden, :attrib, :color, :bgcolor)
   end
   # a structure that maintains position and gives
   # next and previous taking max index into account.
@@ -158,10 +162,34 @@ module Lyra
   # perhaps we can combine the two but have different methods or some flag
   # that way oter methods can be shared
   class DefaultTableRenderer
-    def initialize
+
+    # source is the textpad or extending widget needed so we can call show_colored_chunks
+    # if the user specifies column wise colors
+    def initialize source
+      @source = source
       @y = '|'
       @x = '+'
       @coffsets = []
+      @header_color = :red
+      @header_bgcolor = :white
+      @header_attrib = BOLD
+      @color_pair = $datacolor
+      @attrib = NORMAL
+    end
+    def header_colors fg, bg
+      @header_color = fg
+      @header_bgcolor = bg
+    end
+    def header_attrib att
+      @header_attrib = att
+    end
+    def content_colors fg, bg
+      @color = fg
+      @bgcolor = bg
+      @color_pair = get_color($datacolor, fg, bg)
+    end
+    def content_attrib att
+      @attrib = att
     end
     def column_model c
       @chash = c
@@ -170,12 +198,17 @@ module Lyra
     # Takes the array of row data and formats it using column widths
     # and returns a string which is used for printing
     #
+    # TODO return an array so caller can color columns if need be
     def convert_value_to_text r  
       str = ""
       fmt = nil
-      r.each_with_index { |e, i| 
-        c = @chash[i]
+      field = nil
+      # we need to loop through chash and get index from it and get that row from r
+      #r.each_with_index { |e, i| 
+        #c = @chash[i]
+      @chash.each_with_index { |c, i| 
         next if c.hidden
+        e = r[c.index]
         w = c.width
         l = e.to_s.length
         # if value is longer than width, then truncate it
@@ -189,7 +222,14 @@ module Lyra
             fmt = "%-#{w}s "
           end
         end
-        str << fmt % e
+        field = fmt % e
+        # if we really want to print a single column with color, we need to print here itself
+        # each cell. If we want the user to use tmux formatting in the column itself ...
+        # FIXME - this must not be done for headers.
+        #if c.color
+          #field = "#[fg=#{c.color}]#{field}#[/end]"
+        #end
+        str << field
       }
       return str
     end
@@ -200,14 +240,22 @@ module Lyra
     def render pad, lineno, str
       #lineno += 1 # header_adjustment
       return render_header pad, lineno, 0, str if lineno == 0
-      bg = :black
-      fg = :white
-      att = NORMAL
-      #cp = $datacolor
-      cp = get_color($datacolor, fg, bg)
       #text = str.join " | "
       #text = @fmstr % str
       text = convert_value_to_text str
+      # check if any specific colors , if so then print colors in a loop with no dependence on colored chunks
+      # then we don't need source pointer
+      if text.index "#["
+        require 'rbcurse/core/include/chunk'
+        @parser ||= Chunks::ColorParser.new :tmux
+        text = @parser.convert_to_chunk text
+        FFI::NCurses.wmove pad, lineno, 0
+        @source.show_colored_chunks text, nil, nil
+        return
+      end
+      # FIXME why repeatedly getting this colorpair
+      cp = @color_pair
+      att = @attrib
       FFI::NCurses.wattron(pad,FFI::NCurses.COLOR_PAIR(cp) | att)
       FFI::NCurses.mvwaddstr(pad, lineno, 0, text)
       FFI::NCurses.wattroff(pad,FFI::NCurses.COLOR_PAIR(cp) | att)
@@ -217,9 +265,9 @@ module Lyra
       #text = columns.join " | "
       #text = @fmstr % columns
       text = convert_value_to_text columns
-      bg = :red
-      fg = :white
-      att = BOLD
+      bg = @header_bgcolor
+      fg = @header_color
+      att = @header_attrib
       #cp = $datacolor
       cp = get_color($datacolor, fg, bg)
       FFI::NCurses.wattron(pad,FFI::NCurses.COLOR_PAIR(cp) | att)
@@ -241,7 +289,12 @@ module Lyra
 
     def initialize form = nil, config={}, &block
 
-      @chash = {}
+      # hash of column info objects, for some reason a hash and not an array
+      @chash = []
+      # chash should be an array which is basically the order of rows to be printed
+      #  it contains index, which is the offset of the row in the data @content
+      #  When printing we should loop through chash and get the index in data
+      #
       # should be zero here, but then we won't get textpad correct
       @_header_adjustment = 0 #1
       @col_min_width = 3
@@ -251,11 +304,21 @@ module Lyra
       bind_key(?b, "prev column") { self.prev_column }
       bind_key(?-, "contract column") { self.contract_column }
       bind_key(?+, "expand column") { self.expand_column }
+      bind_key(?=, "expand column to width") { self.expand_column_to_width }
+      bind_key(?\M-=, "expand column to width") { self.expand_column_to_max_width }
     end
-    def get_column index   #:nodoc:
-      return @chash[index] if @chash.has_key? index
-      @chash[index] = ColumnInfo.new
+    
+    # retrieve the column info structure for the given offset
+    # @return ColumnInfo object containing width align color bgcolor attrib hidden
+    def get_column index
+      return @chash[index] if @chash[index]
+      c = ColumnInfo.new
+      c.index = index
+      @chash[index] = c
+      return c
     end
+    ## 
+    # returns collection of ColumnInfo objects
     def column_model
       @chash
     end
@@ -263,7 +326,8 @@ module Lyra
     # calculate pad width based on widths of columns
     def content_cols
       total = 0
-      @chash.each_pair { |i, c| 
+      #@chash.each_pair { |i, c| 
+      @chash.each_with_index { |c, i| 
         next if c.hidden
         w = c.width
         # if you use prepare_format then use w+2 due to separator symbol
@@ -271,11 +335,17 @@ module Lyra
       }
       return total
     end
-    def calculate_column_offsets
+
+    # 
+    # This calculates and stores the offset at which each column starts.
+    # Used when going to next column or doing a find for a string in the table.
+    #
+    def _calculate_column_offsets
       @coffsets = []
       total = 0
 
-      @chash.each_pair { |i, c| 
+      #@chash.each_pair { |i, c| 
+      @chash.each_with_index { |c, i| 
         next if c.hidden
         w = c.width
         @coffsets[i] = total
@@ -288,7 +358,7 @@ module Lyra
     # user w and b keys (:next_column)
     # @return [Fixnum] column index base 0
     def _convert_curpos_to_column  #:nodoc:
-      calculate_column_offsets unless @coffsets
+      _calculate_column_offsets unless @coffsets
       x = 0
       @coffsets.each_with_index { |i, ix| 
         if @curpos < i 
@@ -300,21 +370,25 @@ module Lyra
       x -= 1 # since we start offsets with 0, so first auto becoming 1
       return x
     end
+    # jump cursor to next column
+    # TODO : if cursor goes out of view, then pad should scroll right or left and down
     def next_column
       # TODO take care of multipliers
-      calculate_column_offsets unless @coffsets
+      _calculate_column_offsets unless @coffsets
       c = @column_pointer.next
       cp = @coffsets[c] 
-      $log.debug " next_column #{c} , #{cp} "
+      #$log.debug " next_column #{c} , #{cp} "
       @curpos = cp if cp
       down() if c < @column_pointer.last_index
     end
+    # jump cursor to previous column
+    # TODO : if cursor goes out of view, then pad should scroll right or left and down
     def prev_column
       # TODO take care of multipliers
-      calculate_column_offsets unless @coffsets
+      _calculate_column_offsets unless @coffsets
       c = @column_pointer.previous
       cp = @coffsets[c] 
-      $log.debug " prev #{c} , #{cp} "
+      #$log.debug " prev #{c} , #{cp} "
       @curpos = cp if cp
       up() if c > @column_pointer.last_index
     end
@@ -324,6 +398,24 @@ module Lyra
       column_width x, w+1 if w
       @coffsets = nil
       fire_dimension_changed
+    end
+    def expand_column_to_width w=nil
+      x = _convert_curpos_to_column
+      unless w
+        # expand to width of current cell
+        s = @content[@current_index][x]
+        w = s.to_s.length + 1
+      end
+      column_width x, w
+      @coffsets = nil
+      fire_dimension_changed
+    end
+    # find the width of the longest item in the current columns and expand the width
+    # to that.
+    def expand_column_to_max_width
+      x = _convert_curpos_to_column
+      w = calculate_column_width x
+      expand_column_to_width w
     end
     def contract_column
       x = _convert_curpos_to_column
@@ -343,22 +435,80 @@ module Lyra
     def renderer r
       @renderer = r
     end
+
+    ##
+    # Set column titles with given array of strings.
+    # NOTE: This is only required to be called if first row of file or content does not contain
+    # titles. In that case, this should be called before setting the data as the array passed
+    # is appended into the content array.
+    #
     def columns=(array)
       @_header_adjustment = 1
-      @columns = array
+      # I am eschewing using a separate field for columns. This is simpler for textpad.
+      # We always assume first row is columns.
+      #@columns = array
+      # should we just clear column, otherwise there's no way to set the whole thing with new data
+      # but then if we need to change columns what do it do, on moving or hiding a column ?
+      # Maybe we need a separate clear method or remove_all TODO
       @content ||= []
       @content << array
-      @columns.each_with_index { |c,i| 
-        # if columns added later we could be overwriting the width
-        get_column(i).width = 10
-      }
-      # maintains index in current pointer and gives next or prev
-      @column_pointer = Circular.new @columns.size()-1
+      # This needs to go elsewhere since this method will not be called if file contains
+      # column titles as first row.
+      _init_model array
     end
     alias :headings= :columns=
 
+    def _init_model array
+      array.each_with_index { |c,i| 
+        # if columns added later we could be overwriting the width
+        c = get_column(i)
+        c.width ||= 10
+      }
+      # maintains index in current pointer and gives next or prev
+      @column_pointer = Circular.new array.size()-1
+    end
+    def model_row index
+      array = @content[index]
+      array.each_with_index { |c,i| 
+        # if columns added later we could be overwriting the width
+        ch = get_column(i)
+        ch.width = c.to_s.length + 2
+      }
+      # maintains index in current pointer and gives next or prev
+      @column_pointer = Circular.new array.size()-1
+    end
+
+    ## 
+    # insert entire database in one shot
+    # WARNING: overwrites columns if put there, should contain columns already as in CSV data
+    # @param lines is an array or arrays
+    def text lines, fmt=:none
+      _init_model lines[0]
+      fire_dimension_changed
+      super
+    end
+
+    ##
+    # set column array and data array in one shot
+    # Erases any existing content
+    def resultset columns, data
+      @content = []
+      _init_model columns
+      @content << columns
+      @_header_adjustment = 1
+      
+      @content.concat( data)
+      fire_dimension_changed
+    end
+
+
+      ## add a row to the table
     def add array
-      @content ||= []
+      unless @content
+        # columns were not added, this most likely is the title
+        @content ||= []
+        _init_model array
+      end
       @content << array
       fire_dimension_changed
       self
@@ -369,15 +519,48 @@ module Lyra
       @content.delete_at ix
     end
     alias :<< :add
+    # convenience method to set width of a column
+    # @param index of column
+    # @param width
+    # For setting other attributes, use get_column(index)
     def column_width colindex, width
       get_column(colindex).width = width
+      _invalidate_width_cache
     end
+    # convenience method to set alignment of a column
+    # @param index of column
+    # @param align - :right (any other value is taken to be left)
     def column_align colindex, align
-      #@calign[colindex] = width
       get_column(colindex).align = align
     end
+    # convenience method to hide or unhide a column
+    # Provided since column offsets need to be recalculated in the case of a width
+    # change or visibility change
     def column_hidden colindex, hidden
       get_column(colindex).hidden = hidden
+      _invalidate_width_cache
+    end
+    # http://www.opensource.apple.com/source/gcc/gcc-5483/libjava/javax/swing/table/DefaultTableColumnModel.java
+    def _invalidate_width_cache    #:nodoc:
+      @coffsets = nil
+    end
+    ## 
+    # should all this move into table column model or somepn
+    # move a column from offset ix to offset newix
+    def move_column ix, newix
+      acol = @chash.delete_at ix 
+      @chash.insert newix, acol
+      _invalidate_width_cache
+      #tmce = TableColumnModelEvent.new(ix, newix, self, :MOVE)
+      #fire_handler :TABLE_COLUMN_MODEL_EVENT, tmce
+    end
+    def add_column tc
+      raise "to figure out add_column"
+      _invalidate_width_cache
+    end
+    def remove_column tc
+      raise "to figure out add_column"
+      _invalidate_width_cache
     end
     def calculate_column_width col, maxrows=99
       ret = 3
@@ -434,18 +617,22 @@ module Lyra
     # Find the next row that contains given string
     # Overrides textpad since each line is an array
     # NOTE does not go to next match within row
+    # NOTE: FIXME ensure_visible puts prow = current_index so in this case, the header
+    #   overwrites the matched row.
     # @return row and col offset of match, or nil
     # @param String to find
     def next_match str
-      calculate_column_offsets unless @coffsets
+      _calculate_column_offsets unless @coffsets
       first = nil
       ## content can be string or Chunkline, so we had to write <tt>index</tt> for this.
-      ## =~ does not give an error, but it does not work.
       @content.each_with_index do |fields, ix|
         #col = line.index str
-        fields.each_with_index do |f, jx|
-          col = f.index str
-          $log.debug "XXX:  NEXT found (#{str}) ix:#{col} in row #{ix}, field #{jx}, val #{f}"
+        #fields.each_with_index do |f, jx|
+        @chash.each_with_index do |c, jx|
+          next if c.hidden
+          f = fields[c.index]
+          # value can be numeric
+          col = f.to_s.index str
           if col
             col += @coffsets[jx] 
             first ||= [ ix, col ]
@@ -457,6 +644,81 @@ module Lyra
       end
       return first
     end
+    ## 
+    # Ensure current row is visible, if not make it first row
+    #  This overrides textpad due to header_adjustment, otherwise
+    #  during next_match, the header overrides the found row.
+    # @param current_index (default if not given)
+    #
+    def ensure_visible row = @current_index
+      unless is_visible? row
+          @prow = @current_index - @_header_adjustment
+      end
+    end
 
   end # class TableWidget
+
+  ##
+  # Handles selection of items in a list or table or tree that uses stable indices.
+  # Indexes are in the order they were places, not sorted.
+  # This is just a wrapper over an array, except that it fires an event so users can bind
+  # to row selection and deselection
+  # TODO - fire events to listeners
+  #
+  class ListSelectionModel
+    ##
+    # obj is the source object, I am wondering whether i need it or not
+    def initialize component
+      @obj = component
+      @selected_indices = []
+    end
+    def toggle_row_selection crow
+      if is_row_selected? crow
+        unselect crow
+      else
+        select crow
+      end
+    end
+    def select ix
+      @selected_indices << ix
+      _fire_event ix, ix, :INSERT
+    end
+    def unselect ix
+      @selected_indices.delete ix
+      _fire_event ix, ix, :DELETE
+    end
+    alias :add_to_selection :select
+    alias :remove_from_selection :unselect
+    def clear_selection
+      @selected_indices = []
+      _fire_event 0, 0, :CLEAR
+    end
+    def is_row_selected? crow
+      @selected_indices.include? crow
+    end
+    def is_selection_empty?
+      return @selected_indices.empty?
+    end
+    # if row deleted in list, then synch with list
+    # (No listeners  are informed)
+    def remove_index crow
+      @selected_indices.delete crow
+    end
+    def _fire_event firsti, lasti, event
+      lse = ListSelectionEvent.new(firsti, lasti, self, event)
+      fire_handler :LIST_SELECTION_EVENT, lse
+    end
+
+    def select_all
+      # how do we do this since we don't know what the indices are. 
+      # What is the user using as identifier?
+    end
+     
+    # returns a list of selected indices in the same order as added
+    def selected_rows
+      @selected_indices
+    end
+  end # class
+  class ListSelectionEvent < Struct.new(:firstrow, :lastrow, :source, :type)
+  end
 end # module
