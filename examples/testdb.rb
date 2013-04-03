@@ -4,6 +4,7 @@
 # TODO : make columns hidden on key - toggle, how to get back then
 # TODO : move column position
 # TODO : filter column
+# TODO : menu on C-x to delete a column, hide unhide expand etc, use pad menu
 require 'logger'
 require 'rbcurse'
 require 'lyra/tablewidget'
