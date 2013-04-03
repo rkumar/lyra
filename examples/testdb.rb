@@ -144,8 +144,16 @@ begin
     tv.bind_key(?e) { edit_row(tv) }
     tv.bind_key(?i) { insert_row(tv) }
     tv.bind_key(?D) { tv.delete_at tv.current_index }
-    @form.bind_key(?\M-m, "Select methods") {
+    @form.bind_key(?\M-c, "Filter") {
       tv = @form.by_name["tv"]; 
+      str = get_string "Enter name of director:"
+      if str && str.length > 0
+      m = tv.matching_indices do |ix, fields|
+        fields[3] =~ /#{str}/i
+      end
+      else
+        tv.clear_matches
+      end
     }
 
 
