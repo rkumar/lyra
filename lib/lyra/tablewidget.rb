@@ -5,7 +5,7 @@
 #       Author: rkumar http://github.com/rkumar/rbcurse/
 #         Date: 2013-03-29 - 20:07
 #      License: Same as Ruby's License (http://www.ruby-lang.org/LICENSE.txt)
-#  Last update: 2013-04-03 00:52
+#  Last update: 2013-04-03 19:23
 # ----------------------------------------------------------------------------- #
 #   tablewidget.rb  Copyright (C) 2012-2013 rahul kumar
 
@@ -20,12 +20,10 @@ require 'rbcurse/core/widgets/textpad'
 # making the code base simpler to understand and maintain.
 # TODO
 #   _ compare to tabular_widget and see what's missing
-#   _ selection stuff
-#   _ test with resultset from sqlite to see if we can use Array or need to make model
+#   _ filtering rows without losing data
+#   . selection stuff
+#   x test with resultset from sqlite to see if we can use Array or need to make model
 #     should we use a datamodel so resultsets can be sent in, what about tabular
-#   x sorting
-#   x search - currently fails since line.index is working on an array which matches
-#     complete item not a substring
 #   _ header to handle events ?
 #
 #
@@ -33,7 +31,7 @@ module Lyra
   # column data, one instance for each column
   # index is the index in the data of this column. This index will not change.
   # Order of printing columns is determined by the ordering of the objects.
-  class ColumnInfo < Struct.new(:name, :index, :width, :align, :hidden, :attrib, :color, :bgcolor)
+  class ColumnInfo < Struct.new(:name, :index, :offset, :width, :align, :hidden, :attrib, :color, :bgcolor)
   end
   # a structure that maintains position and gives
   # next and previous taking max index into account.
@@ -82,8 +80,8 @@ module Lyra
     class DefaultTableRowSorter
       attr_reader :sort_keys
       # model is array of data
-      def initialize model=nil
-        self.model = model
+      def initialize data_model=nil
+        self.model = data_model
         @columns_sort = []
         @sort_keys = nil
       end
@@ -210,8 +208,9 @@ module Lyra
       # we need to loop through chash and get index from it and get that row from r
       #r.each_with_index { |e, i| 
         #c = @chash[i]
-      @chash.each_with_index { |c, i| 
-        next if c.hidden
+      #@chash.each_with_index { |c, i| 
+        #next if c.hidden
+      each_column {|c,i|
         e = r[c.index]
         w = c.width
         l = e.to_s.length
@@ -292,8 +291,9 @@ module Lyra
     # check if we need to individually color columns or we can do the entire
     # row in one shot
     def check_colors
-      @chash.each_with_index { |c, i| 
-        next if c.hidden
+      each_column {|c,i|
+      #@chash.each_with_index { |c, i| 
+        #next if c.hidden
         if c.color || c.bgcolor || c.attrib
           @_check_coloring = true
           return
@@ -301,13 +301,20 @@ module Lyra
         @_check_coloring = false
       }
     end
+    def each_column
+      @chash.each_with_index { |c, i| 
+        next if c.hidden
+        yield c,i if block_given?
+      }
+    end
   def colorize pad, lineno, r
     # the incoming data is already in the order of display based on chash,
     # so we cannot run chash on it again, so how do we get the color info
     _offset = 0
     # we need to get coffsets here FIXME
-    @chash.each_with_index { |c, i| 
-      next if c.hidden
+    #@chash.each_with_index { |c, i| 
+      #next if c.hidden
+    each_column {|c,i|
       text = r[i]
       color = c.color
       bg = c.bgcolor
@@ -357,10 +364,13 @@ module Lyra
       bind_key(?\M-=, "expand column to width") { self.expand_column_to_max_width }
     end
     
-    # retrieve the column info structure for the given offset
+    # retrieve the column info structure for the given offset. The offset
+    # pertains to the visible offset not actual offset in data model. 
+    # These two differ when we move a column.
     # @return ColumnInfo object containing width align color bgcolor attrib hidden
     def get_column index
       return @chash[index] if @chash[index]
+      # create a new entry since none present
       c = ColumnInfo.new
       c.index = index
       @chash[index] = c
@@ -376,8 +386,9 @@ module Lyra
     def content_cols
       total = 0
       #@chash.each_pair { |i, c| 
-      @chash.each_with_index { |c, i| 
-        next if c.hidden
+      #@chash.each_with_index { |c, i| 
+        #next if c.hidden
+      each_column {|c,i|
         w = c.width
         # if you use prepare_format then use w+2 due to separator symbol
         total += w + 1
@@ -388,16 +399,19 @@ module Lyra
     # 
     # This calculates and stores the offset at which each column starts.
     # Used when going to next column or doing a find for a string in the table.
+    # TODO store this inside the hash so it's not calculated again in renderer
     #
     def _calculate_column_offsets
       @coffsets = []
       total = 0
 
       #@chash.each_pair { |i, c| 
-      @chash.each_with_index { |c, i| 
-        next if c.hidden
+      #@chash.each_with_index { |c, i| 
+        #next if c.hidden
+      each_column {|c,i|
         w = c.width
         @coffsets[i] = total
+        c.offset = total
         # if you use prepare_format then use w+2 due to separator symbol
         total += w + 1
       }
@@ -648,14 +662,17 @@ module Lyra
       @table_row_sorter = DefaultTableRowSorter.new @content
     end
     def header_row?
-      true
+      @prow == 0
     end
 
     def fire_action_event
       if header_row?
         if @table_row_sorter
           x = _convert_curpos_to_column
-          @table_row_sorter.toggle_sort_order x
+          c = @chash[x]
+          # convert to index in data model since sorter only has data_model
+          index = c.index
+          @table_row_sorter.toggle_sort_order index
           @table_row_sorter.sort
           fire_dimension_changed
         end
@@ -677,8 +694,9 @@ module Lyra
       @content.each_with_index do |fields, ix|
         #col = line.index str
         #fields.each_with_index do |f, jx|
-        @chash.each_with_index do |c, jx|
-          next if c.hidden
+        #@chash.each_with_index do |c, jx|
+          #next if c.hidden
+        each_column do |c,jx|
           f = fields[c.index]
           # value can be numeric
           col = f.to_s.index str
@@ -703,6 +721,15 @@ module Lyra
       unless is_visible? row
           @prow = @current_index - @_header_adjustment
       end
+    end
+    #
+    # yields non-hidden columns (ColumnInfo) and the offset/index
+    # This is the order in which columns are to be printed
+    def each_column
+      @chash.each_with_index { |c, i| 
+        next if c.hidden
+        yield c,i if block_given?
+      }
     end
 
   end # class TableWidget
