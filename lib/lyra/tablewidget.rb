@@ -5,7 +5,7 @@
 #       Author: rkumar http://github.com/rkumar/rbcurse/
 #         Date: 2013-03-29 - 20:07
 #      License: Same as Ruby's License (http://www.ruby-lang.org/LICENSE.txt)
-#  Last update: 2013-04-03 19:23
+#  Last update: 2013-04-04 01:53
 # ----------------------------------------------------------------------------- #
 #   tablewidget.rb  Copyright (C) 2012-2013 rahul kumar
 
@@ -711,6 +711,37 @@ module Lyra
       end
       return first
     end
+    # yields each column to caller method
+    # for true returned, collects index of row into array and returns the array
+    # @returns array of indices which can be empty
+    # Value yielded can be fixnum or date etc
+    def matching_indices 
+      raise "block required for matching_indices" unless block_given?
+      @indices = []
+      ## content can be string or Chunkline, so we had to write <tt>index</tt> for this.
+      @content.each_with_index do |fields, ix|
+        flag = yield ix, fields
+        if flag
+          @indices << ix 
+        end
+      end
+      $log.debug "XXX:  INDICES found #{@indices}"
+      if @indices.count > 0
+        fire_dimension_changed
+        init_vars
+      else
+        @indices = nil
+      end
+      #return @indices
+    end
+    def clear_matches
+      # clear previous match so all data can show again
+      if @indices && @indices.count > 0
+        fire_dimension_changed
+        init_vars
+      end
+      @indices = nil
+    end
     ## 
     # Ensure current row is visible, if not make it first row
     #  This overrides textpad due to header_adjustment, otherwise
@@ -730,6 +761,18 @@ module Lyra
         next if c.hidden
         yield c,i if block_given?
       }
+    end
+    def render_all
+      if @indices && @indices.count > 0
+        @indices.each_with_index do |ix, jx|
+          render @pad, jx, @content[ix]
+        end
+      else
+        @content.each_with_index { |line, ix|
+          #FFI::NCurses.mvwaddstr(@pad,ix, 0, @content[ix])
+          render @pad, ix, line
+        }
+      end
     end
 
   end # class TableWidget
