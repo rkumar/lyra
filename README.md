@@ -29,6 +29,13 @@ Screenshot:
 
     y
 
+* lyra has not been pushed as a gem. you can install locally with:
+  
+   gem build lyra.gemspec
+   gem install --local lyra
+
+You may need this to run some examples in the examples dir.
+
 *  profit!
 
 ## Pre-requisites ##
